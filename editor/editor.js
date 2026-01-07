@@ -46,11 +46,19 @@ const users = new Map()
 let statusEl, barEl, usersEl
 let isRenaming = false
 
+// ⬇️ RESTORED UI STATE
+const session = loadSession()
+
+let gridEnabled = session.grid !== false
+let snappingEnabled = session.snapping !== false
+let panels = {
+    users: session.panels?.users !== false
+}
+
 /* ================= DEBUG OVERLAY ================= */
 
 let debugEnabled = localStorage.getItem('debug-overlay') === '1'
 let debugEl = null
-
 let serverStats = null
 
 let fps = 0
@@ -65,17 +73,19 @@ function formatTime(ms) {
 
 function initDebugOverlay() {
     debugEl = document.createElement('div')
-    debugEl.style.position = 'fixed'
-    debugEl.style.top = '8px'
-    debugEl.style.left = '8px'
-    debugEl.style.padding = '6px 8px'
-    debugEl.style.background = 'rgba(0,0,0,0.6)'
-    debugEl.style.color = '#0f0'
-    debugEl.style.font = '11px monospace'
-    debugEl.style.pointerEvents = 'none'
-    debugEl.style.zIndex = '9999'
-    debugEl.style.whiteSpace = 'pre'
-    debugEl.style.display = debugEnabled ? 'block' : 'none'
+    Object.assign(debugEl.style, {
+        position: 'fixed',
+        top: '8px',
+        left: '8px',
+        padding: '6px 8px',
+        background: 'rgba(0,0,0,0.6)',
+        color: '#0f0',
+        font: '11px monospace',
+        pointerEvents: 'none',
+        zIndex: 9999,
+        whiteSpace: 'pre',
+        display: debugEnabled ? 'block' : 'none'
+    })
     document.body.appendChild(debugEl)
 }
 
@@ -95,7 +105,9 @@ WS: ${getStatus()}
 RTT: ${getPing() ?? '-'}ms
 Users: ${users.size}
 AFK: ${afk}
-Timeout: ${timeout}`
+Timeout: ${timeout}
+Grid: ${gridEnabled}
+Snap: ${snappingEnabled}`
 
     if (serverStats) {
         text += `
@@ -167,7 +179,6 @@ on('message', msg => {
         ready = true
         dirty = false
 
-        // SESSION RESTORE (camera)
         const s = loadSession()
         if (s.camera) {
             camera.x = s.camera.x ?? camera.x
@@ -181,7 +192,7 @@ on('message', msg => {
     if (msg.type === 'users') {
         users.clear()
         msg.users.forEach(u => users.set(u.id, u))
-        if (!isRenaming) renderUsers()
+        if (!isRenaming && panels.users) renderUsers()
         updateDebugOverlay()
     }
 
@@ -200,9 +211,7 @@ on('message', msg => {
         })
     }
 
-    if (msg.type === 'cursor-leave') {
-        cursors.delete(msg.id)
-    }
+    if (msg.type === 'cursor-leave') cursors.delete(msg.id)
 
     if (msg.type === 'action') {
         applyAction(msg.action)
@@ -238,6 +247,8 @@ window.addEventListener('DOMContentLoaded', () => {
     barEl = document.getElementById('autosave-bar')
     usersEl = document.getElementById('users')
 
+    usersEl.style.display = panels.users ? 'block' : 'none'
+
     initDebugOverlay()
 
     canvas.width = window.innerWidth
@@ -252,6 +263,19 @@ window.addEventListener('DOMContentLoaded', () => {
             debugEnabled = !debugEnabled
             localStorage.setItem('debug-overlay', debugEnabled ? '1' : '0')
             debugEl.style.display = debugEnabled ? 'block' : 'none'
+        }
+
+        if (e.key === 'g') {
+            gridEnabled = !gridEnabled
+        }
+
+        if (e.key === 's') {
+            snappingEnabled = !snappingEnabled
+        }
+
+        if (e.key === 'u') {
+            panels.users = !panels.users
+            usersEl.style.display = panels.users ? 'block' : 'none'
         }
     })
 
@@ -268,10 +292,15 @@ window.addEventListener('DOMContentLoaded', () => {
         const rect = canvas.getBoundingClientRect()
         const pos = screenToWorld(e.clientX - rect.left, e.clientY - rect.top)
 
-        const x = Math.floor(pos.x / TILE_SIZE)
-        const y = Math.floor(pos.y / TILE_SIZE)
-        const key = `${x},${y}`
+        const x = snappingEnabled
+            ? Math.floor(pos.x / TILE_SIZE)
+            : Math.round(pos.x / TILE_SIZE)
 
+        const y = snappingEnabled
+            ? Math.floor(pos.y / TILE_SIZE)
+            : Math.round(pos.y / TILE_SIZE)
+
+        const key = `${x},${y}`
         if (painted.has(key)) return
         painted.add(key)
 
@@ -343,7 +372,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
 
         render(ctx, canvas)
-        drawGrid(ctx, canvas)
+        if (gridEnabled) drawGrid(ctx, canvas)
 
         const t = Date.now()
 
@@ -365,9 +394,11 @@ window.addEventListener('DOMContentLoaded', () => {
             ctx.globalAlpha = 1
         }
 
-        // SESSION SAVE (camera)
         saveSession({
             ...loadSession(),
+            grid: gridEnabled,
+            snapping: snappingEnabled,
+            panels,
             camera: {
                 x: camera.x,
                 y: camera.y,
@@ -387,7 +418,6 @@ function renderUsers() {
     usersEl.innerHTML = ''
 
     for (const u of users.values()) {
-
         let indicator = '●'
         let indicatorColor = '#4caf50'
 
@@ -416,7 +446,6 @@ function renderUsers() {
 
         div.appendChild(ind)
         div.appendChild(text)
-
         usersEl.appendChild(div)
     }
 }
