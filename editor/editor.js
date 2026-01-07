@@ -5,10 +5,13 @@ import { TILE_SIZE, loadMap } from './map.js'
 import { push } from './history.js'
 import { createSetTileAction, applyAction } from './actions.js'
 
+/* ================= STATE ================= */
+
 const ws = new WebSocket('wss://lib31.ru/ws')
 
 let ready = false
 let dirty = false
+
 let saving = false
 let lastSaved = null
 
@@ -20,9 +23,9 @@ const cursors = new Map()
 const users = new Map()
 
 let statusEl, barEl, usersEl
-
-// 🔴 ВАЖНО: локальный флаг rename
 let isRenaming = false
+
+/* ================= STATUS ================= */
 
 function updateStatus() {
     if (!statusEl) return
@@ -43,10 +46,14 @@ function updateStatus() {
         statusEl.textContent =
             `✓ Saved ${new Date(lastSaved).toLocaleTimeString()}`
         statusEl.style.color = '#4caf50'
+    } else {
+        statusEl.textContent = '✓ Saved'
+        statusEl.style.color = '#4caf50'
     }
 }
 
-// ================= WS =================
+/* ================= WEBSOCKET ================= */
+
 ws.onmessage = e => {
     const msg = JSON.parse(e.data)
 
@@ -66,11 +73,7 @@ ws.onmessage = e => {
     if (msg.type === 'users') {
         users.clear()
         msg.users.forEach(u => users.set(u.id, u))
-
-        // ❗ не перерисовываем список, если редактируем имя
-        if (!isRenaming) {
-            renderUsers()
-        }
+        if (!isRenaming) renderUsers()
     }
 
     if (msg.type === 'cursor') {
@@ -109,7 +112,8 @@ ws.onmessage = e => {
     }
 }
 
-// ================= INIT =================
+/* ================= INIT ================= */
+
 window.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('canvas')
     const ctx = canvas.getContext('2d')
@@ -120,8 +124,15 @@ window.addEventListener('DOMContentLoaded', () => {
 
     canvas.width = window.innerWidth
     canvas.height = window.innerHeight
+    canvas.tabIndex = 0
+    canvas.focus()
+
+    canvas.addEventListener('contextmenu', e => e.preventDefault())
+
+    /* ================= DRAW ================= */
 
     let isDrawing = false
+    let eraseMode = false
     let brushActions = []
     const painted = new Set()
 
@@ -138,25 +149,29 @@ window.addEventListener('DOMContentLoaded', () => {
         if (painted.has(key)) return
         painted.add(key)
 
-        const action = createSetTileAction(x, y, 1)
+        const tile = eraseMode ? 0 : 1
+        const action = createSetTileAction(x, y, tile)
         if (!action) return
 
         applyAction(action)
         brushActions.push(action)
+
         dirty = true
         updateStatus()
     }
 
     canvas.addEventListener('mousedown', e => {
+        if (!(e.buttons & (1 | 2))) return
+
         isDrawing = true
+        eraseMode = !!(e.buttons & 2)
         brushActions = []
         painted.clear()
         paint(e)
     })
 
     canvas.addEventListener('mousemove', e => {
-        // 🔒 защита: рисуем ТОЛЬКО если ЛКМ реально зажата
-        if (isDrawing && (e.buttons & 1)) {
+        if (isDrawing && (e.buttons & (1 | 2))) {
             paint(e)
         }
 
@@ -171,13 +186,52 @@ window.addEventListener('DOMContentLoaded', () => {
     })
 
     window.addEventListener('mouseup', () => {
-        if (!isDrawing || !brushActions.length) return
+        if (!isDrawing || !brushActions.length) {
+            isDrawing = false
+            eraseMode = false
+            return
+        }
+
         isDrawing = false
+        eraseMode = false
 
         const brush = { type: 'brush', actions: brushActions }
         push(brush)
         ws.send(JSON.stringify({ type: 'action', action: brush }))
     })
+
+    window.addEventListener('blur', () => {
+        isDrawing = false
+        eraseMode = false
+    })
+
+    canvas.addEventListener('mouseleave', () => {
+        isDrawing = false
+        eraseMode = false
+    })
+
+    /* ================= CTRL + S ================= */
+
+    window.addEventListener(
+        'keydown',
+        e => {
+            if (!(e.ctrlKey || e.metaKey)) return
+            if (e.key.toLowerCase() !== 's') return
+
+            e.preventDefault()
+
+            // ❗ нельзя если карта не загружена или сейчас сохраняется
+            if (!ready || saving) return
+
+            saving = true
+            updateStatus()
+
+            ws.send(JSON.stringify({ type: 'save' }))
+        },
+        { capture: true }
+    )
+
+    /* ================= RENDER LOOP ================= */
 
     function loop() {
         render(ctx, canvas)
@@ -208,17 +262,15 @@ window.addEventListener('DOMContentLoaded', () => {
     loop()
 })
 
-// ================= USERS UI =================
+/* ================= USERS ================= */
+
 function renderUsers() {
     usersEl.innerHTML = ''
 
     for (const u of users.values()) {
         const div = document.createElement('div')
         div.style.color = u.color
-
-        div.textContent = u.editing
-            ? `${u.name}▌`
-            : u.name
+        div.textContent = u.editing ? `${u.name}▌` : u.name
 
         if (u.id === myId) {
             div.ondblclick = () => {
@@ -234,7 +286,6 @@ function renderUsers() {
                 input.style.border = `1px solid ${u.color}`
                 input.style.outline = 'none'
                 input.style.font = '13px monospace'
-                input.style.padding = '2px 4px'
                 input.style.caretColor = u.color
 
                 ws.send(JSON.stringify({ type: 'rename-start' }))
