@@ -7,41 +7,77 @@ import { createSetTileAction, applyAction } from './actions.js'
 
 // ================= WEBSOCKET =================
 const ws = new WebSocket('wss://lib31.ru/ws')
+
 let ready = false
+let dirty = false
+let saving = false
+let lastSaved = null
 
-ws.onmessage = e => {
-    const msg = JSON.parse(e.data)
+// ================= UI =================
+let statusEl, barEl
 
-    // ===== SNAPSHOT =====
-    if (msg.type === 'snapshot') {
-        loadMap(msg.map)
-        ready = true
-        log('map loaded')
+function updateStatus() {
+    if (!statusEl) return
+
+    if (saving) {
+        statusEl.textContent = 'Saving…'
+        statusEl.style.color = '#ffb300'
         return
     }
 
-    // ===== ACTION =====
-    if (msg.type === 'action') {
-        applyAction(msg.action)
-        push(msg.action)
+    if (dirty) {
+        statusEl.textContent = '● Unsaved'
+        statusEl.style.color = '#ff5252'
+        return
     }
 
-    // ===== USER EVENTS =====
-    if (msg.type === 'user') {
-        if (msg.event === 'join') log('user connected')
-        if (msg.event === 'leave') log('user disconnected')
+    if (lastSaved) {
+        const t = new Date(lastSaved).toLocaleTimeString()
+        statusEl.textContent = `✓ Saved ${t}`
+        statusEl.style.color = '#4caf50'
     }
 }
 
-// ================= UI LOG =================
-function log(text) {
-    console.log('[Editor]', text)
+// ================= WS =================
+ws.onmessage = e => {
+    const msg = JSON.parse(e.data)
+
+    if (msg.type === 'snapshot') {
+        loadMap(msg.map)
+        ready = true
+        dirty = false
+        updateStatus()
+        return
+    }
+
+    if (msg.type === 'action') {
+        applyAction(msg.action)
+        push(msg.action)
+        dirty = true
+        updateStatus()
+    }
+
+    if (msg.type === 'saving') {
+        saving = true
+        barEl.style.width = '100%'
+        updateStatus()
+    }
+
+    if (msg.type === 'saved') {
+        saving = false
+        dirty = false
+        lastSaved = msg.time
+        barEl.style.width = '0%'
+        updateStatus()
+    }
 }
 
 // ================= EDITOR =================
 window.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('canvas')
     const ctx = canvas.getContext('2d')
+    statusEl = document.getElementById('status')
+    barEl = document.getElementById('autosave-bar')
 
     canvas.width = window.innerWidth
     canvas.height = window.innerHeight
@@ -54,10 +90,11 @@ window.addEventListener('DOMContentLoaded', () => {
         if (!ready) return
 
         const rect = canvas.getBoundingClientRect()
-        const sx = e.clientX - rect.left
-        const sy = e.clientY - rect.top
+        const pos = screenToWorld(
+            e.clientX - rect.left,
+            e.clientY - rect.top
+        )
 
-        const pos = screenToWorld(sx, sy)
         const x = Math.floor(pos.x / TILE_SIZE)
         const y = Math.floor(pos.y / TILE_SIZE)
 
@@ -70,9 +107,10 @@ window.addEventListener('DOMContentLoaded', () => {
 
         applyAction(action)
         brushActions.push(action)
+        dirty = true
+        updateStatus()
     }
 
-    // ===== MOUSE =====
     canvas.addEventListener('mousedown', e => {
         isDrawing = true
         brushActions = []
@@ -89,45 +127,18 @@ window.addEventListener('DOMContentLoaded', () => {
         isDrawing = false
         if (!brushActions.length) return
 
-        const brush = {
-            type: 'brush',
-            actions: brushActions
-        }
-
+        const brush = { type: 'brush', actions: brushActions }
         push(brush)
         ws.send(JSON.stringify({ type: 'action', action: brush }))
     })
 
-    // ===== KEYBOARD =====
     window.addEventListener('keydown', e => {
-        // UNDO
-        if (e.ctrlKey && e.key === 'z') {
-            e.preventDefault()
-            const a = undo()
-            if (!a) return
-            ws.send(JSON.stringify({
-                type: 'action',
-                action: { ...a, after: a.before }
-            }))
-        }
-
-        // REDO
-        if (e.ctrlKey && (e.key === 'y' || e.key === 'Z')) {
-            e.preventDefault()
-            const a = redo()
-            if (!a) return
-            ws.send(JSON.stringify({ type: 'action', action: a }))
-        }
-
-        // SAVE (MANUAL)
         if (e.ctrlKey && e.key === 's') {
             e.preventDefault()
             ws.send(JSON.stringify({ type: 'save' }))
-            log('manual save')
         }
     })
 
-    // ===== RENDER LOOP =====
     function loop() {
         render(ctx, canvas)
         drawGrid(ctx, canvas)

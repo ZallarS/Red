@@ -24,8 +24,14 @@ if (fs.existsSync(MAP_PATH)) {
         map.set(k, v)
     }
     console.log(`[LOAD] map loaded (${map.size} tiles)`)
-} else {
-    console.log('[LOAD] no saved map')
+}
+
+// ================= BROADCAST =================
+function broadcast(msg) {
+    const data = JSON.stringify(msg)
+    for (const c of wss.clients) {
+        if (c.readyState === 1) c.send(data)
+    }
 }
 
 // ================= SAVE =================
@@ -34,17 +40,26 @@ function saveMap(reason = 'manual') {
         MAP_PATH,
         JSON.stringify(Object.fromEntries(map), null, 2)
     )
+
+    broadcast({
+        type: 'saved',
+        reason,
+        time: Date.now()
+    })
+
     console.log(`[SAVE] map saved (${reason})`)
 }
 
-// ================= AUTOSAVE (DEBOUNCE) =================
+// ================= AUTOSAVE =================
 function scheduleAutosave() {
     if (autosaveTimer) clearTimeout(autosaveTimer)
+
+    broadcast({ type: 'saving', mode: 'autosave' })
 
     autosaveTimer = setTimeout(() => {
         saveMap('autosave')
         autosaveTimer = null
-    }, 3000) // 3 секунды после последнего изменения
+    }, 3000)
 }
 
 // ================= APPLY ACTION =================
@@ -65,15 +80,8 @@ function applyServerAction(action) {
 
 // ================= WEBSOCKET =================
 wss.on('connection', ws => {
-    console.log('[WS] client connected')
+    broadcast({ type: 'user', event: 'join' })
 
-    // notify others
-    broadcast({
-        type: 'user',
-        event: 'join'
-    })
-
-    // snapshot
     ws.send(JSON.stringify({
         type: 'snapshot',
         map: Object.fromEntries(map)
@@ -85,40 +93,18 @@ wss.on('connection', ws => {
         if (msg.type === 'action') {
             applyServerAction(msg.action)
             scheduleAutosave()
-
-            broadcast({
-                type: 'action',
-                action: msg.action
-            })
+            broadcast({ type: 'action', action: msg.action })
         }
 
         if (msg.type === 'save') {
+            broadcast({ type: 'saving', mode: 'manual' })
             saveMap('manual')
         }
     })
 
     ws.on('close', () => {
-        console.log('[WS] client disconnected')
-        broadcast({
-            type: 'user',
-            event: 'leave'
-        })
+        broadcast({ type: 'user', event: 'leave' })
     })
-})
-
-function broadcast(msg) {
-    const data = JSON.stringify(msg)
-    for (const client of wss.clients) {
-        if (client.readyState === 1) {
-            client.send(data)
-        }
-    }
-}
-
-// ================= API (OPTIONAL) =================
-app.post('/api/save-map', (req, res) => {
-    saveMap('manual')
-    res.json({ ok: true })
 })
 
 // ================= START =================
