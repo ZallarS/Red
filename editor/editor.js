@@ -4,7 +4,13 @@ import { screenToWorld } from './camera.js'
 import { TILE_SIZE, loadMap } from './map.js'
 import { push } from './history.js'
 import { createSetTileAction, applyAction } from './actions.js'
-import { connect, send, on, getStatus } from './ws.js'
+import {
+    connect,
+    send,
+    on,
+    getStatus,
+    getPing          // ★
+} from './ws.js'
 
 /* ================= STATE ================= */
 
@@ -30,6 +36,8 @@ function updateStatus() {
     if (!statusEl) return
 
     const wsStatus = getStatus()
+    const ping = getPing() // ★
+    const pingText = ping != null ? ` · ${ping}ms` : '' // ★
 
     if (wsStatus === 'reconnecting') {
         statusEl.textContent = '⟳ Reconnecting…'
@@ -55,13 +63,14 @@ function updateStatus() {
         return
     }
 
-    statusEl.textContent = '✓ Online'
+    statusEl.textContent = `✓ Online${pingText}` // ★
     statusEl.style.color = '#4caf50'
 }
 
 /* ================= WS ================= */
 
 on('status', updateStatus)
+on('ping', updateStatus) // ★
 
 on('message', msg => {
 

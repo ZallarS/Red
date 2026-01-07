@@ -14,20 +14,13 @@ const wss = new WebSocketServer({ server })
 const PORT = 3000
 const MAP_PATH = path.join(__dirname, 'assets/maps/level1.json')
 
-// ================= MAP STATE =================
+// ================= MAP =================
 const map = new Map()
 let autosaveTimer = null
 
 // ================= USERS =================
-/*
-clients: Map<ws, {
-    id,
-    name,
-    color,
-    editing
-}>
-*/
-const clients = new Map()
+const clients = new Map() // ws -> user
+const sessions = new Map() // sessionId -> { name, color }
 
 function colorFromId(id) {
     let hash = 0
@@ -39,14 +32,9 @@ function colorFromId(id) {
 
 // ================= LOAD MAP =================
 if (fs.existsSync(MAP_PATH)) {
-    try {
-        const data = JSON.parse(fs.readFileSync(MAP_PATH, 'utf8'))
-        for (const [k, v] of Object.entries(data)) {
-            map.set(k, v)
-        }
-        console.log('🗺 Map loaded')
-    } catch (e) {
-        console.error('❌ Failed to load map:', e)
+    const data = JSON.parse(fs.readFileSync(MAP_PATH, 'utf8'))
+    for (const [k, v] of Object.entries(data)) {
+        map.set(k, v)
     }
 }
 
@@ -74,22 +62,15 @@ function broadcastUsers() {
 
 // ================= SAVE =================
 function saveMap(reason = 'manual') {
-    try {
-        fs.writeFileSync(
-            MAP_PATH,
-            JSON.stringify(Object.fromEntries(map), null, 2)
-        )
-        broadcast({ type: 'saved', reason, time: Date.now() })
-        console.log(`💾 Map saved (${reason})`)
-    } catch (e) {
-        console.error('❌ Save failed:', e)
-    }
+    fs.writeFileSync(
+        MAP_PATH,
+        JSON.stringify(Object.fromEntries(map), null, 2)
+    )
+    broadcast({ type: 'saved', reason, time: Date.now() })
 }
 
-// ================= AUTOSAVE =================
 function scheduleAutosave() {
     clearTimeout(autosaveTimer)
-
     broadcast({ type: 'saving', mode: 'autosave' })
 
     autosaveTimer = setTimeout(() => {
@@ -101,56 +82,77 @@ function scheduleAutosave() {
 // ================= APPLY ACTION =================
 function applyServerAction(action) {
     if (!action) return
-
     if (action.type === 'brush') {
         action.actions.forEach(applyServerAction)
         return
     }
-
     if (action.type === 'setTile') {
         const key = `${action.x},${action.y}`
-        if (action.after === 0) {
-            map.delete(key)
-        } else {
-            map.set(key, action.after)
-        }
+        if (action.after === 0) map.delete(key)
+        else map.set(key, action.after)
     }
 }
 
 // ================= WEBSOCKET =================
 wss.on('connection', ws => {
-    const id = crypto.randomUUID().slice(0, 6)
 
-    const user = {
-        id,
-        name: `User-${id}`,
-        color: colorFromId(id),
-        editing: false
-    }
-
-    clients.set(ws, user)
-
-    // hello
-    ws.send(JSON.stringify({
-        type: 'hello',
-        id: user.id,
-        name: user.name,
-        color: user.color
-    }))
-
-    // snapshot
-    ws.send(JSON.stringify({
-        type: 'snapshot',
-        map: Object.fromEntries(map)
-    }))
-
-    broadcastUsers()
+    let sessionId = null
+    let user = null
 
     ws.on('message', raw => {
         let msg
-        try {
-            msg = JSON.parse(raw)
-        } catch {
+        try { msg = JSON.parse(raw) } catch { return }
+
+        // ===== AUTH =====
+        if (msg.type === 'auth') {
+            sessionId = String(msg.sessionId || '')
+
+            if (sessions.has(sessionId)) {
+                const s = sessions.get(sessionId)
+                user = {
+                    id: sessionId.slice(0, 6),
+                    name: s.name,
+                    color: s.color,
+                    editing: false
+                }
+            } else {
+                sessionId = crypto.randomUUID()
+                user = {
+                    id: sessionId.slice(0, 6),
+                    name: `User-${sessionId.slice(0, 4)}`,
+                    color: colorFromId(sessionId),
+                    editing: false
+                }
+                sessions.set(sessionId, {
+                    name: user.name,
+                    color: user.color
+                })
+            }
+
+            clients.set(ws, user)
+
+            ws.send(JSON.stringify({
+                type: 'hello',
+                id: user.id,
+                name: user.name,
+                color: user.color,
+                sessionId
+            }))
+
+            ws.send(JSON.stringify({
+                type: 'snapshot',
+                map: Object.fromEntries(map)
+            }))
+
+            broadcastUsers()
+            return
+        }
+
+        if (!user) return
+
+        // ===== PING =====
+        if (msg.type === 'ping') {
+            ws.send(JSON.stringify({ type: 'pong', t: msg.t }))
             return
         }
 
@@ -164,6 +166,7 @@ wss.on('connection', ws => {
         if (msg.type === 'rename-preview') {
             user.name = String(msg.name || '').slice(0, 24)
             user.editing = true
+            sessions.set(sessionId, { name: user.name, color: user.color })
             broadcastUsers()
             return
         }
@@ -171,6 +174,7 @@ wss.on('connection', ws => {
         if (msg.type === 'rename') {
             user.name = String(msg.name || '').slice(0, 24)
             user.editing = false
+            sessions.set(sessionId, { name: user.name, color: user.color })
             broadcastUsers()
             return
         }
@@ -197,22 +201,19 @@ wss.on('connection', ws => {
             return
         }
 
-        // ===== MANUAL SAVE (Ctrl+S) =====
+        // ===== SAVE =====
         if (msg.type === 'save') {
             broadcast({ type: 'saving', mode: 'manual' })
             saveMap('manual')
-            return
         }
     })
 
     ws.on('close', () => {
         clients.delete(ws)
-        broadcast({ type: 'cursor-leave', id: user.id })
         broadcastUsers()
     })
 })
 
-// ================= START =================
-server.listen(PORT, '127.0.0.1', () => {
-    console.log(`🚀 Node engine listening on http://127.0.0.1:${PORT}`)
+server.listen(PORT, () => {
+    console.log(`🚀 Server running on http://127.0.0.1:${PORT}`)
 })

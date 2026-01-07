@@ -1,8 +1,12 @@
 let ws = null
 let status = 'offline'
 let retries = 0
+let ping = null
+let pingTimer = null
 
 const listeners = new Map()
+const sessionKey = 'editor-session-id'
+let sessionId = localStorage.getItem(sessionKey)
 
 export function on(type, fn) {
     if (!listeners.has(type)) listeners.set(type, [])
@@ -18,39 +22,61 @@ export function getStatus() {
     return status
 }
 
+export function getPing() {
+    return ping
+}
+
 export function connect() {
     status = 'connecting'
     emit('status', status)
 
-    ws = new WebSocket('wss://lib31.ru/ws')
+    ws = new WebSocket('wss://lib31.ru/ws/')
 
     ws.onopen = () => {
-        retries = 0
         status = 'online'
+        retries = 0
         emit('status', status)
+
+        ws.send(JSON.stringify({
+            type: 'auth',
+            sessionId
+        }))
+
+        pingTimer = setInterval(() => {
+            ws.send(JSON.stringify({ type: 'ping', t: Date.now() }))
+        }, 2000)
     }
 
     ws.onmessage = e => {
         const msg = JSON.parse(e.data)
+
+        if (msg.type === 'pong') {
+            ping = Date.now() - msg.t
+            emit('ping', ping)
+            return
+        }
+
+        if (msg.type === 'hello' && msg.sessionId) {
+            sessionId = msg.sessionId
+            localStorage.setItem(sessionKey, sessionId)
+        }
+
         emit('message', msg)
     }
 
-    ws.onerror = () => {
-        ws.close()
-    }
-
     ws.onclose = () => {
-        status = 'offline'
-        emit('status', status)
-
-        const timeout = Math.min(3000 + retries * 2000, 15000)
-        retries++
+        clearInterval(pingTimer)
+        ping = null
 
         status = 'reconnecting'
         emit('status', status)
 
+        const timeout = Math.min(3000 + retries * 2000, 15000)
+        retries++
         setTimeout(connect, timeout)
     }
+
+    ws.onerror = () => ws.close()
 }
 
 export function send(data) {
