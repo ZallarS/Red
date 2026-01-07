@@ -21,6 +21,9 @@ const users = new Map()
 
 let statusEl, barEl, usersEl
 
+// 🔴 ВАЖНО: локальный флаг rename
+let isRenaming = false
+
 function updateStatus() {
     if (!statusEl) return
 
@@ -63,7 +66,11 @@ ws.onmessage = e => {
     if (msg.type === 'users') {
         users.clear()
         msg.users.forEach(u => users.set(u.id, u))
-        renderUsers()
+
+        // ❗ не перерисовываем список, если редактируем имя
+        if (!isRenaming) {
+            renderUsers()
+        }
     }
 
     if (msg.type === 'cursor') {
@@ -204,16 +211,20 @@ function renderUsers() {
 
     for (const u of users.values()) {
         const div = document.createElement('div')
-        div.textContent = u.name
         div.style.color = u.color
 
-        // === DOUBLE CLICK RENAME (WITH COLORED CARET) ===
+        div.textContent = u.editing
+            ? `${u.name}▌`
+            : u.name
+
         if (u.id === myId) {
             div.ondblclick = () => {
+                isRenaming = true
+                const original = u.name
+
                 const input = document.createElement('input')
                 input.value = u.name
 
-                // ===== STYLE LIKE FIGMA =====
                 input.style.width = '100%'
                 input.style.background = '#000'
                 input.style.color = u.color
@@ -223,18 +234,27 @@ function renderUsers() {
                 input.style.padding = '2px 4px'
                 input.style.caretColor = u.color
 
-                const commit = () => {
+                ws.send(JSON.stringify({ type: 'rename-start' }))
+
+                input.oninput = () => {
                     ws.send(JSON.stringify({
-                        type: 'rename',
+                        type: 'rename-preview',
                         name: input.value
                     }))
                 }
 
-                input.onblur = commit
-                input.onkeydown = e => {
-                    if (e.key === 'Enter') commit()
-                    if (e.key === 'Escape') renderUsers()
+                function finish(name) {
+                    ws.send(JSON.stringify({ type: 'rename', name }))
+                    isRenaming = false
+                    renderUsers()
                 }
+
+                input.onkeydown = e => {
+                    if (e.key === 'Enter') finish(input.value)
+                    if (e.key === 'Escape') finish(original)
+                }
+
+                input.onblur = () => finish(input.value)
 
                 div.replaceWith(input)
                 input.focus()

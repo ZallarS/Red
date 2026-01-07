@@ -49,7 +49,8 @@ function broadcastUsers() {
         users: [...clients.values()].map(u => ({
             id: u.id,
             name: u.name,
-            color: u.color
+            color: u.color,
+            editing: u.editing === true
         }))
     })
 }
@@ -92,10 +93,12 @@ function applyServerAction(action) {
 // ================= WEBSOCKET =================
 wss.on('connection', ws => {
     const id = crypto.randomUUID().slice(0, 6)
+
     const user = {
         id,
         name: `User-${id}`,
-        color: colorFromId(id)
+        color: colorFromId(id),
+        editing: false
     }
 
     clients.set(ws, user)
@@ -109,12 +112,27 @@ wss.on('connection', ws => {
         const msg = JSON.parse(data)
 
         // ===== RENAME =====
-        if (msg.type === 'rename') {
-            user.name = String(msg.name || '').slice(0, 24)
+        if (msg.type === 'rename-start') {
+            user.editing = true
             broadcastUsers()
             return
         }
 
+        if (msg.type === 'rename-preview') {
+            user.name = String(msg.name || '').slice(0, 24)
+            user.editing = true
+            broadcastUsers()
+            return
+        }
+
+        if (msg.type === 'rename') {
+            user.name = String(msg.name || '').slice(0, 24)
+            user.editing = false
+            broadcastUsers()
+            return
+        }
+
+        // ===== CURSOR =====
         if (msg.type === 'cursor') {
             broadcast({
                 type: 'cursor',
@@ -125,14 +143,18 @@ wss.on('connection', ws => {
                 y: msg.y,
                 t: Date.now()
             }, ws)
+            return
         }
 
+        // ===== ACTION =====
         if (msg.type === 'action') {
             applyServerAction(msg.action)
             scheduleAutosave()
             broadcast({ type: 'action', action: msg.action }, ws)
+            return
         }
 
+        // ===== MANUAL SAVE =====
         if (msg.type === 'save') {
             broadcast({ type: 'saving', mode: 'manual' })
             saveMap('manual')
