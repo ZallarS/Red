@@ -22,8 +22,9 @@ let autosaveTimer = null
 const clients = new Map()
 const sessions = new Map()
 
-const AFK_TIME = 15_000
-const TIMEOUT_TIME = 60_000
+// ⬇️ РЕКОМЕНДУЕМЫЕ ЗНАЧЕНИЯ
+const AFK_TIME = 5_000
+const TIMEOUT_TIME = 30_000
 
 function colorFromId(id) {
     let hash = 0
@@ -67,32 +68,48 @@ function broadcastUsers() {
 }
 
 // ================= ACTIVITY =================
+
+// weak — любая активность (ping, latency)
+function markSeen(user) {
+    user.lastSeen = Date.now()
+}
+
+// strong — реальная пользовательская активность
 function markActive(user) {
-    user.lastActive = Date.now()
+    const now = Date.now()
+    user.lastSeen = now
+    user.lastActive = now
     user.afk = false
     user.timeout = false
 }
 
-// проверка AFK / timeout
+// проверка AFK / timeout (adaptive)
 setInterval(() => {
     const now = Date.now()
     let changed = false
 
     for (const u of clients.values()) {
-        const idle = now - (u.lastActive ?? now)
 
-        if (!u.timeout && idle > TIMEOUT_TIME) {
+        // TIMEOUT — давно вообще ничего не было
+        if (!u.timeout && now - u.lastSeen > TIMEOUT_TIME) {
             u.timeout = true
-            u.afk = true
+            u.afk = false
             changed = true
-        } else if (!u.afk && idle > AFK_TIME) {
-            u.afk = true
-            changed = true
+            continue
+        }
+
+        // AFK — давно не было strong activity
+        if (!u.timeout) {
+            const afkNow = now - u.lastActive > AFK_TIME
+            if (afkNow !== u.afk) {
+                u.afk = afkNow
+                changed = true
+            }
         }
     }
 
     if (changed) broadcastUsers()
-}, 2000)
+}, 1000)
 
 // ================= SAVE =================
 function saveMap(reason = 'manual') {
@@ -141,6 +158,8 @@ wss.on('connection', ws => {
         if (msg.type === 'auth') {
             sessionId = String(msg.sessionId || '')
 
+            const now = Date.now()
+
             if (sessions.has(sessionId)) {
                 const s = sessions.get(sessionId)
                 user = {
@@ -149,7 +168,8 @@ wss.on('connection', ws => {
                     color: s.color,
                     editing: false,
                     ping: null,
-                    lastActive: Date.now(),
+                    lastActive: now,
+                    lastSeen: now,
                     afk: false,
                     timeout: false
                 }
@@ -161,7 +181,8 @@ wss.on('connection', ws => {
                     color: colorFromId(sessionId),
                     editing: false,
                     ping: null,
-                    lastActive: Date.now(),
+                    lastActive: now,
+                    lastSeen: now,
                     afk: false,
                     timeout: false
                 }
@@ -192,58 +213,11 @@ wss.on('connection', ws => {
 
         if (!user) return
 
-        // любая активность
-        if (msg.type === 'cursor') {
-            markActive(user)
-
-            broadcast({
-                type: 'cursor',
-                id: user.id,
-                name: user.name,
-                color: user.color,
-                x: msg.x,
-                y: msg.y,
-                t: Date.now()
-            }, ws)
-            return
-        }
-
-        if (msg.type === 'ping') {
-            ws.send(JSON.stringify({ type: 'pong', t: msg.t }))
-            return
-        }
-
-        if (msg.type === 'latency') {
-            user.ping = Math.max(0, Math.min(999, msg.ping | 0))
-            broadcastUsers()
-            return
-        }
-
-        if (msg.type === 'rename-start') {
-            markActive(user)
-            user.editing = true
-            broadcastUsers()
-            return
-        }
-        if (msg.type === 'rename-preview') {
-            markActive(user)
-            user.name = String(msg.name || '').slice(0, 24)
-            user.editing = true
-            sessions.set(sessionId, { name: user.name, color: user.color })
-            broadcastUsers()
-            return
-        }
-
-        if (msg.type === 'rename') {
-            markActive(user)
-            user.name = String(msg.name || '').slice(0, 24)
-            user.editing = false
-            sessions.set(sessionId, { name: user.name, color: user.color })
-            broadcastUsers()
-            return
-        }
+        // ===== STRONG ACTIVITY =====
 
         if (msg.type === 'cursor') {
+            markActive(user)
+
             broadcast({
                 type: 'cursor',
                 id: user.id,
@@ -265,9 +239,51 @@ wss.on('connection', ws => {
             return
         }
 
+        if (msg.type === 'rename-start') {
+            markActive(user)
+            user.editing = true
+            broadcastUsers()
+            return
+        }
+
+        if (msg.type === 'rename-preview') {
+            markActive(user)
+            user.name = String(msg.name || '').slice(0, 24)
+            user.editing = true
+            sessions.set(sessionId, { name: user.name, color: user.color })
+            broadcastUsers()
+            return
+        }
+
+        if (msg.type === 'rename') {
+            markActive(user)
+            user.name = String(msg.name || '').slice(0, 24)
+            user.editing = false
+            sessions.set(sessionId, { name: user.name, color: user.color })
+            broadcastUsers()
+            return
+        }
+
         if (msg.type === 'save') {
+            markActive(user)
             broadcast({ type: 'saving', mode: 'manual' })
             saveMap('manual')
+            return
+        }
+
+        // ===== WEAK ACTIVITY =====
+
+        if (msg.type === 'ping') {
+            markSeen(user)
+            ws.send(JSON.stringify({ type: 'pong', t: msg.t }))
+            return
+        }
+
+        if (msg.type === 'latency') {
+            markSeen(user)
+            user.ping = Math.max(0, Math.min(999, msg.ping | 0))
+            broadcastUsers()
+            return
         }
     })
 
