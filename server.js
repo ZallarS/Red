@@ -3,6 +3,7 @@ import path from 'path'
 import express from 'express'
 import http from 'http'
 import { WebSocketServer } from 'ws'
+import crypto from 'crypto'
 
 const __dirname = new URL('.', import.meta.url).pathname
 
@@ -17,6 +18,9 @@ const MAP_PATH = path.join(__dirname, 'assets/maps/level1.json')
 const map = new Map()
 let autosaveTimer = null
 
+// ================= USERS (CURSORS) =================
+const clients = new Map() // ws -> { id }
+
 // ================= LOAD MAP =================
 if (fs.existsSync(MAP_PATH)) {
     const data = JSON.parse(fs.readFileSync(MAP_PATH, 'utf8'))
@@ -27,10 +31,12 @@ if (fs.existsSync(MAP_PATH)) {
 }
 
 // ================= BROADCAST =================
-function broadcast(msg) {
+function broadcast(msg, except = null) {
     const data = JSON.stringify(msg)
     for (const c of wss.clients) {
-        if (c.readyState === 1) c.send(data)
+        if (c !== except && c.readyState === 1) {
+            c.send(data)
+        }
     }
 }
 
@@ -80,22 +86,47 @@ function applyServerAction(action) {
 
 // ================= WEBSOCKET =================
 wss.on('connection', ws => {
-    broadcast({ type: 'user', event: 'join' })
+    const user = {
+        id: crypto.randomUUID().slice(0, 8)
+    }
+    clients.set(ws, user)
 
+    // отправляем ID клиенту
+    ws.send(JSON.stringify({
+        type: 'hello',
+        id: user.id
+    }))
+
+    // snapshot карты
     ws.send(JSON.stringify({
         type: 'snapshot',
         map: Object.fromEntries(map)
     }))
 
+    broadcast({ type: 'user', event: 'join', id: user.id })
+
     ws.on('message', data => {
         const msg = JSON.parse(data)
 
+        // ===== CURSOR =====
+        if (msg.type === 'cursor') {
+            broadcast({
+                type: 'cursor',
+                id: user.id,
+                x: msg.x,
+                y: msg.y
+            }, ws)
+            return
+        }
+
+        // ===== ACTION =====
         if (msg.type === 'action') {
             applyServerAction(msg.action)
             scheduleAutosave()
-            broadcast({ type: 'action', action: msg.action })
+            broadcast({ type: 'action', action: msg.action }, ws)
         }
 
+        // ===== SAVE =====
         if (msg.type === 'save') {
             broadcast({ type: 'saving', mode: 'manual' })
             saveMap('manual')
@@ -103,7 +134,9 @@ wss.on('connection', ws => {
     })
 
     ws.on('close', () => {
-        broadcast({ type: 'user', event: 'leave' })
+        clients.delete(ws)
+        broadcast({ type: 'cursor-leave', id: user.id })
+        broadcast({ type: 'user', event: 'leave', id: user.id })
     })
 })
 

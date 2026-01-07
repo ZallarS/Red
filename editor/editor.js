@@ -13,6 +13,9 @@ let dirty = false
 let saving = false
 let lastSaved = null
 
+let myId = null
+const cursors = new Map()
+
 // ================= UI =================
 let statusEl, barEl
 
@@ -42,6 +45,10 @@ function updateStatus() {
 ws.onmessage = e => {
     const msg = JSON.parse(e.data)
 
+    if (msg.type === 'hello') {
+        myId = msg.id
+    }
+
     if (msg.type === 'snapshot') {
         loadMap(msg.map)
         ready = true
@@ -70,12 +77,22 @@ ws.onmessage = e => {
         barEl.style.width = '0%'
         updateStatus()
     }
+
+    // ===== CURSORS =====
+    if (msg.type === 'cursor') {
+        cursors.set(msg.id, { x: msg.x, y: msg.y })
+    }
+
+    if (msg.type === 'cursor-leave') {
+        cursors.delete(msg.id)
+    }
 }
 
 // ================= EDITOR =================
 window.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('canvas')
     const ctx = canvas.getContext('2d')
+
     statusEl = document.getElementById('status')
     barEl = document.getElementById('autosave-bar')
 
@@ -120,6 +137,16 @@ window.addEventListener('DOMContentLoaded', () => {
 
     canvas.addEventListener('mousemove', e => {
         if (isDrawing) paint(e)
+
+        // ==== SEND CURSOR ====
+        if (myId) {
+            const rect = canvas.getBoundingClientRect()
+            ws.send(JSON.stringify({
+                type: 'cursor',
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            }))
+        }
     })
 
     window.addEventListener('mouseup', () => {
@@ -142,6 +169,21 @@ window.addEventListener('DOMContentLoaded', () => {
     function loop() {
         render(ctx, canvas)
         drawGrid(ctx, canvas)
+
+        // ==== DRAW OTHER CURSORS ====
+        for (const [id, c] of cursors) {
+            if (id === myId) continue
+
+            ctx.fillStyle = 'rgba(0,150,255,0.9)'
+            ctx.beginPath()
+            ctx.arc(c.x, c.y, 4, 0, Math.PI * 2)
+            ctx.fill()
+
+            ctx.fillStyle = '#09f'
+            ctx.font = '10px monospace'
+            ctx.fillText(id, c.x + 6, c.y - 6)
+        }
+
         requestAnimationFrame(loop)
     }
 
