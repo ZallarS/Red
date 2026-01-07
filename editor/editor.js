@@ -35,9 +35,17 @@ let isRenaming = false
 let debugEnabled = localStorage.getItem('debug-overlay') === '1'
 let debugEl = null
 
+let serverStats = null   // ⬅️ NEW
+
 let fps = 0
 let frames = 0
 let lastFpsTime = performance.now()
+
+function formatTime(ms) {
+    const s = Math.floor(ms / 1000)
+    const m = Math.floor(s / 60)
+    return m > 0 ? `${m}m ${s % 60}s` : `${s}s`
+}
 
 function initDebugOverlay() {
     debugEl = document.createElement('div')
@@ -65,13 +73,27 @@ function updateDebugOverlay() {
         else if (u.afk) afk++
     }
 
-    debugEl.textContent =
+    let text =
         `FPS: ${fps}
 WS: ${getStatus()}
 RTT: ${getPing() ?? '-'}ms
 Users: ${users.size}
 AFK: ${afk}
 Timeout: ${timeout}`
+
+    // ⬇️ SERVER STATS
+    if (serverStats) {
+        text += `
+Server:
+ Uptime: ${formatTime(serverStats.uptime)}
+ Clients: ${serverStats.clients}
+ AFK: ${serverStats.afk}
+ Timeout: ${serverStats.timeout}
+ Tiles: ${serverStats.tiles}
+ Autosave: ${serverStats.autosave}`
+    }
+
+    debugEl.textContent = text
 }
 
 /* ================= STATUS ================= */
@@ -136,6 +158,12 @@ on('message', msg => {
         users.clear()
         msg.users.forEach(u => users.set(u.id, u))
         if (!isRenaming) renderUsers()
+        updateDebugOverlay()
+    }
+
+    // ⬇️ SERVER STATS
+    if (msg.type === 'server-stats') {
+        serverStats = msg.stats
         updateDebugOverlay()
     }
 

@@ -22,9 +22,10 @@ let autosaveTimer = null
 const clients = new Map()
 const sessions = new Map()
 
-// ⬇️ РЕКОМЕНДУЕМЫЕ ЗНАЧЕНИЯ
 const AFK_TIME = 5_000
 const TIMEOUT_TIME = 30_000
+
+const startedAt = Date.now()
 
 function colorFromId(id) {
     let hash = 0
@@ -68,13 +69,10 @@ function broadcastUsers() {
 }
 
 // ================= ACTIVITY =================
-
-// weak — любая активность (ping, latency)
 function markSeen(user) {
     user.lastSeen = Date.now()
 }
 
-// strong — реальная пользовательская активность
 function markActive(user) {
     const now = Date.now()
     user.lastSeen = now
@@ -83,14 +81,11 @@ function markActive(user) {
     user.timeout = false
 }
 
-// проверка AFK / timeout (adaptive)
 setInterval(() => {
     const now = Date.now()
     let changed = false
 
     for (const u of clients.values()) {
-
-        // TIMEOUT — давно вообще ничего не было
         if (!u.timeout && now - u.lastSeen > TIMEOUT_TIME) {
             u.timeout = true
             u.afk = false
@@ -98,7 +93,6 @@ setInterval(() => {
             continue
         }
 
-        // AFK — давно не было strong activity
         if (!u.timeout) {
             const afkNow = now - u.lastActive > AFK_TIME
             if (afkNow !== u.afk) {
@@ -109,6 +103,33 @@ setInterval(() => {
     }
 
     if (changed) broadcastUsers()
+}, 1000)
+
+// ================= SERVER STATS =================
+function collectServerStats() {
+    let afk = 0
+    let timeout = 0
+
+    for (const u of clients.values()) {
+        if (u.timeout) timeout++
+        else if (u.afk) afk++
+    }
+
+    return {
+        uptime: Date.now() - startedAt,
+        clients: clients.size,
+        afk,
+        timeout,
+        tiles: map.size,
+        autosave: autosaveTimer ? 'pending' : 'idle'
+    }
+}
+
+setInterval(() => {
+    broadcast({
+        type: 'server-stats',
+        stats: collectServerStats()
+    })
 }, 1000)
 
 // ================= SAVE =================
@@ -157,7 +178,6 @@ wss.on('connection', ws => {
         // ===== AUTH =====
         if (msg.type === 'auth') {
             sessionId = String(msg.sessionId || '')
-
             const now = Date.now()
 
             if (sessions.has(sessionId)) {
@@ -186,10 +206,7 @@ wss.on('connection', ws => {
                     afk: false,
                     timeout: false
                 }
-                sessions.set(sessionId, {
-                    name: user.name,
-                    color: user.color
-                })
+                sessions.set(sessionId, { name: user.name, color: user.color })
             }
 
             clients.set(ws, user)
@@ -214,25 +231,14 @@ wss.on('connection', ws => {
         if (!user) return
 
         // ===== STRONG ACTIVITY =====
-
         if (msg.type === 'cursor') {
             markActive(user)
-
-            broadcast({
-                type: 'cursor',
-                id: user.id,
-                name: user.name,
-                color: user.color,
-                x: msg.x,
-                y: msg.y,
-                t: Date.now()
-            }, ws)
+            broadcast({ type: 'cursor', id: user.id, name: user.name, color: user.color, x: msg.x, y: msg.y, t: Date.now() }, ws)
             return
         }
 
         if (msg.type === 'action') {
             markActive(user)
-
             applyServerAction(msg.action)
             scheduleAutosave()
             broadcast({ type: 'action', action: msg.action }, ws)
@@ -272,7 +278,6 @@ wss.on('connection', ws => {
         }
 
         // ===== WEAK ACTIVITY =====
-
         if (msg.type === 'ping') {
             markSeen(user)
             ws.send(JSON.stringify({ type: 'pong', t: msg.t }))
