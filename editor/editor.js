@@ -30,6 +30,50 @@ const users = new Map()
 let statusEl, barEl, usersEl
 let isRenaming = false
 
+/* ================= DEBUG OVERLAY ================= */
+
+let debugEnabled = localStorage.getItem('debug-overlay') === '1'
+let debugEl = null
+
+let fps = 0
+let frames = 0
+let lastFpsTime = performance.now()
+
+function initDebugOverlay() {
+    debugEl = document.createElement('div')
+    debugEl.style.position = 'fixed'
+    debugEl.style.top = '8px'
+    debugEl.style.left = '8px'
+    debugEl.style.padding = '6px 8px'
+    debugEl.style.background = 'rgba(0,0,0,0.6)'
+    debugEl.style.color = '#0f0'
+    debugEl.style.font = '11px monospace'
+    debugEl.style.pointerEvents = 'none'
+    debugEl.style.zIndex = '9999'
+    debugEl.style.whiteSpace = 'pre'
+    debugEl.style.display = debugEnabled ? 'block' : 'none'
+    document.body.appendChild(debugEl)
+}
+
+function updateDebugOverlay() {
+    if (!debugEnabled || !debugEl) return
+
+    let afk = 0
+    let timeout = 0
+    for (const u of users.values()) {
+        if (u.timeout) timeout++
+        else if (u.afk) afk++
+    }
+
+    debugEl.textContent =
+        `FPS: ${fps}
+WS: ${getStatus()}
+RTT: ${getPing() ?? '-'}ms
+Users: ${users.size}
+AFK: ${afk}
+Timeout: ${timeout}`
+}
+
 /* ================= STATUS ================= */
 
 function updateStatus() {
@@ -92,6 +136,7 @@ on('message', msg => {
         users.clear()
         msg.users.forEach(u => users.set(u.id, u))
         if (!isRenaming) renderUsers()
+        updateDebugOverlay()
     }
 
     if (msg.type === 'cursor') {
@@ -142,12 +187,24 @@ window.addEventListener('DOMContentLoaded', () => {
     barEl = document.getElementById('autosave-bar')
     usersEl = document.getElementById('users')
 
+    initDebugOverlay()
+
     canvas.width = window.innerWidth
     canvas.height = window.innerHeight
     canvas.tabIndex = 0
     canvas.focus()
 
     canvas.addEventListener('contextmenu', e => e.preventDefault())
+
+    /* ===== DEBUG TOGGLE ===== */
+
+    window.addEventListener('keydown', e => {
+        if (e.key === '`' || e.key === '~') {
+            debugEnabled = !debugEnabled
+            localStorage.setItem('debug-overlay', debugEnabled ? '1' : '0')
+            debugEl.style.display = debugEnabled ? 'block' : 'none'
+        }
+    })
 
     /* ================= DRAW ================= */
 
@@ -218,33 +275,28 @@ window.addEventListener('DOMContentLoaded', () => {
         send({ type: 'action', action: brush })
     })
 
-    /* ================= CTRL + S ================= */
-
-    window.addEventListener('keydown', e => {
-        if (!(e.ctrlKey || e.metaKey)) return
-        if (e.key.toLowerCase() !== 's') return
-
-        e.preventDefault()
-        if (!ready || saving || getStatus() !== 'online') return
-
-        saving = true
-        updateStatus()
-        send({ type: 'save' })
-    })
-
     /* ================= RENDER LOOP ================= */
 
     function loop() {
+        frames++
+        const now = performance.now()
+        if (now - lastFpsTime >= 1000) {
+            fps = frames
+            frames = 0
+            lastFpsTime = now
+            updateDebugOverlay()
+        }
+
         render(ctx, canvas)
         drawGrid(ctx, canvas)
 
-        const now = Date.now()
+        const t = Date.now()
 
         for (const [id, c] of cursors) {
             if (id === myId) continue
-            if (users.get(id)?.timeout) continue   // ⬅ timeout — не рисуем курсор
+            if (users.get(id)?.timeout) continue
 
-            const age = now - c.time
+            const age = t - c.time
             if (age > 3000) continue
 
             ctx.globalAlpha = users.get(id)?.afk ? 0.4 : 1
@@ -299,47 +351,6 @@ function renderUsers() {
 
         div.appendChild(ind)
         div.appendChild(text)
-
-        if (u.id === myId && !u.timeout) {
-            div.ondblclick = () => {
-                isRenaming = true
-                const original = u.name
-
-                const input = document.createElement('input')
-                input.value = u.name
-
-                input.style.width = '100%'
-                input.style.background = '#000'
-                input.style.color = u.color
-                input.style.border = `1px solid ${u.color}`
-                input.style.outline = 'none'
-                input.style.font = '13px monospace'
-                input.style.caretColor = u.color
-
-                send({ type: 'rename-start' })
-
-                input.oninput = () => {
-                    send({ type: 'rename-preview', name: input.value })
-                }
-
-                function finish(name) {
-                    send({ type: 'rename', name })
-                    isRenaming = false
-                    renderUsers()
-                }
-
-                input.onkeydown = e => {
-                    if (e.key === 'Enter') finish(input.value)
-                    if (e.key === 'Escape') finish(original)
-                }
-
-                input.onblur = () => finish(input.value)
-
-                div.replaceWith(input)
-                input.focus()
-                input.select()
-            }
-        }
 
         usersEl.appendChild(div)
     }
