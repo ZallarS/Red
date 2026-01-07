@@ -1,6 +1,6 @@
 import { render } from './render.js'
 import { drawGrid } from './grid.js'
-import { screenToWorld } from './camera.js'
+import { screenToWorld, camera } from './camera.js'
 import { TILE_SIZE, loadMap } from './map.js'
 import { push } from './history.js'
 import { createSetTileAction, applyAction } from './actions.js'
@@ -11,6 +11,22 @@ import {
     getStatus,
     getPing
 } from './ws.js'
+
+/* ================= SESSION RESTORE ================= */
+
+const SESSION_KEY = 'editor-session'
+
+function loadSession() {
+    try {
+        return JSON.parse(localStorage.getItem(SESSION_KEY)) || {}
+    } catch {
+        return {}
+    }
+}
+
+function saveSession(data) {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(data))
+}
 
 /* ================= STATE ================= */
 
@@ -35,7 +51,7 @@ let isRenaming = false
 let debugEnabled = localStorage.getItem('debug-overlay') === '1'
 let debugEl = null
 
-let serverStats = null   // ⬅️ NEW
+let serverStats = null
 
 let fps = 0
 let frames = 0
@@ -81,7 +97,6 @@ Users: ${users.size}
 AFK: ${afk}
 Timeout: ${timeout}`
 
-    // ⬇️ SERVER STATS
     if (serverStats) {
         text += `
 Server:
@@ -151,6 +166,15 @@ on('message', msg => {
         cursors.clear()
         ready = true
         dirty = false
+
+        // SESSION RESTORE (camera)
+        const s = loadSession()
+        if (s.camera) {
+            camera.x = s.camera.x ?? camera.x
+            camera.y = s.camera.y ?? camera.y
+            camera.zoom = s.camera.zoom ?? camera.zoom
+        }
+
         updateStatus()
     }
 
@@ -161,7 +185,6 @@ on('message', msg => {
         updateDebugOverlay()
     }
 
-    // ⬇️ SERVER STATS
     if (msg.type === 'server-stats') {
         serverStats = msg.stats
         updateDebugOverlay()
@@ -224,8 +247,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
     canvas.addEventListener('contextmenu', e => e.preventDefault())
 
-    /* ===== DEBUG TOGGLE ===== */
-
     window.addEventListener('keydown', e => {
         if (e.key === '`' || e.key === '~') {
             debugEnabled = !debugEnabled
@@ -237,7 +258,7 @@ window.addEventListener('DOMContentLoaded', () => {
     /* ================= DRAW ================= */
 
     let isDrawing = false
-    let eraseMode = false
+    let eraseMode = loadSession().tool === 'erase'
     let brushActions = []
     const painted = new Set()
 
@@ -270,6 +291,12 @@ window.addEventListener('DOMContentLoaded', () => {
 
         isDrawing = true
         eraseMode = !!(e.buttons & 2)
+
+        saveSession({
+            ...loadSession(),
+            tool: eraseMode ? 'erase' : 'draw'
+        })
+
         brushActions = []
         painted.clear()
         paint(e)
@@ -337,6 +364,16 @@ window.addEventListener('DOMContentLoaded', () => {
             ctx.fillText(c.name, c.x + 6, c.y - 6)
             ctx.globalAlpha = 1
         }
+
+        // SESSION SAVE (camera)
+        saveSession({
+            ...loadSession(),
+            camera: {
+                x: camera.x,
+                y: camera.y,
+                zoom: camera.zoom
+            }
+        })
 
         requestAnimationFrame(loop)
     }
