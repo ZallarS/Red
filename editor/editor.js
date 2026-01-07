@@ -155,7 +155,10 @@ window.addEventListener('DOMContentLoaded', () => {
     })
 
     canvas.addEventListener('mousemove', e => {
-        if (isDrawing) paint(e)
+        // 🔒 защита: рисуем ТОЛЬКО если ЛКМ реально зажата
+        if (isDrawing && (e.buttons & 1)) {
+            paint(e)
+        }
 
         if (myId) {
             const r = canvas.getBoundingClientRect()
