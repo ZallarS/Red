@@ -60,7 +60,6 @@ function saveMap(reason = 'manual') {
         MAP_PATH,
         JSON.stringify(Object.fromEntries(map), null, 2)
     )
-
     broadcast({ type: 'saved', reason, time: Date.now() })
 }
 
@@ -108,6 +107,13 @@ wss.on('connection', ws => {
 
     ws.on('message', data => {
         const msg = JSON.parse(data)
+
+        // ===== RENAME =====
+        if (msg.type === 'rename') {
+            user.name = String(msg.name || '').slice(0, 24)
+            broadcastUsers()
+            return
+        }
 
         if (msg.type === 'cursor') {
             broadcast({

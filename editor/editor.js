@@ -37,7 +37,8 @@ function updateStatus() {
     }
 
     if (lastSaved) {
-        statusEl.textContent = `✓ Saved ${new Date(lastSaved).toLocaleTimeString()}`
+        statusEl.textContent =
+            `✓ Saved ${new Date(lastSaved).toLocaleTimeString()}`
         statusEl.style.color = '#4caf50'
     }
 }
@@ -180,8 +181,7 @@ window.addEventListener('DOMContentLoaded', () => {
             const age = now - c.time
             if (age > 3000) continue
 
-            const alpha = 1 - age / 3000
-            ctx.globalAlpha = alpha
+            ctx.globalAlpha = 1 - age / 3000
             ctx.fillStyle = c.color
             ctx.beginPath()
             ctx.arc(c.x, c.y, 4, 0, Math.PI * 2)
@@ -201,10 +201,36 @@ window.addEventListener('DOMContentLoaded', () => {
 // ================= USERS UI =================
 function renderUsers() {
     usersEl.innerHTML = ''
+
     for (const u of users.values()) {
         const div = document.createElement('div')
         div.textContent = u.name
         div.style.color = u.color
+
+        // === DOUBLE CLICK RENAME (ONLY SELF) ===
+        if (u.id === myId) {
+            div.ondblclick = () => {
+                const input = document.createElement('input')
+                input.value = u.name
+                input.style.width = '100%'
+
+                const commit = () => {
+                    ws.send(JSON.stringify({
+                        type: 'rename',
+                        name: input.value
+                    }))
+                }
+
+                input.onblur = commit
+                input.onkeydown = e => {
+                    if (e.key === 'Enter') commit()
+                }
+
+                div.replaceWith(input)
+                input.focus()
+            }
+        }
+
         usersEl.appendChild(div)
     }
 }
