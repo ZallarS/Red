@@ -207,12 +207,21 @@ function renderUsers() {
         div.textContent = u.name
         div.style.color = u.color
 
-        // === DOUBLE CLICK RENAME (ONLY SELF) ===
+        // === DOUBLE CLICK RENAME (WITH COLORED CARET) ===
         if (u.id === myId) {
             div.ondblclick = () => {
                 const input = document.createElement('input')
                 input.value = u.name
+
+                // ===== STYLE LIKE FIGMA =====
                 input.style.width = '100%'
+                input.style.background = '#000'
+                input.style.color = u.color
+                input.style.border = `1px solid ${u.color}`
+                input.style.outline = 'none'
+                input.style.font = '13px monospace'
+                input.style.padding = '2px 4px'
+                input.style.caretColor = u.color
 
                 const commit = () => {
                     ws.send(JSON.stringify({
@@ -224,10 +233,12 @@ function renderUsers() {
                 input.onblur = commit
                 input.onkeydown = e => {
                     if (e.key === 'Enter') commit()
+                    if (e.key === 'Escape') renderUsers()
                 }
 
                 div.replaceWith(input)
                 input.focus()
+                input.select()
             }
         }
 
