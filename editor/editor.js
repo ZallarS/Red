@@ -2,10 +2,9 @@ import { render } from './render.js'
 import { drawGrid } from './grid.js'
 import { screenToWorld } from './camera.js'
 import { TILE_SIZE, loadMap } from './map.js'
-import { push, undo, redo } from './history.js'
+import { push } from './history.js'
 import { createSetTileAction, applyAction } from './actions.js'
 
-// ================= WEBSOCKET =================
 const ws = new WebSocket('wss://lib31.ru/ws')
 
 let ready = false
@@ -14,10 +13,13 @@ let saving = false
 let lastSaved = null
 
 let myId = null
-const cursors = new Map()
+let myName = ''
+let myColor = '#09f'
 
-// ================= UI =================
-let statusEl, barEl
+const cursors = new Map()
+const users = new Map()
+
+let statusEl, barEl, usersEl
 
 function updateStatus() {
     if (!statusEl) return
@@ -35,8 +37,7 @@ function updateStatus() {
     }
 
     if (lastSaved) {
-        const t = new Date(lastSaved).toLocaleTimeString()
-        statusEl.textContent = `✓ Saved ${t}`
+        statusEl.textContent = `✓ Saved ${new Date(lastSaved).toLocaleTimeString()}`
         statusEl.style.color = '#4caf50'
     }
 }
@@ -47,6 +48,8 @@ ws.onmessage = e => {
 
     if (msg.type === 'hello') {
         myId = msg.id
+        myName = msg.name
+        myColor = msg.color
     }
 
     if (msg.type === 'snapshot') {
@@ -54,7 +57,26 @@ ws.onmessage = e => {
         ready = true
         dirty = false
         updateStatus()
-        return
+    }
+
+    if (msg.type === 'users') {
+        users.clear()
+        msg.users.forEach(u => users.set(u.id, u))
+        renderUsers()
+    }
+
+    if (msg.type === 'cursor') {
+        cursors.set(msg.id, {
+            x: msg.x,
+            y: msg.y,
+            name: msg.name,
+            color: msg.color,
+            time: msg.t
+        })
+    }
+
+    if (msg.type === 'cursor-leave') {
+        cursors.delete(msg.id)
     }
 
     if (msg.type === 'action') {
@@ -77,24 +99,16 @@ ws.onmessage = e => {
         barEl.style.width = '0%'
         updateStatus()
     }
-
-    // ===== CURSORS =====
-    if (msg.type === 'cursor') {
-        cursors.set(msg.id, { x: msg.x, y: msg.y })
-    }
-
-    if (msg.type === 'cursor-leave') {
-        cursors.delete(msg.id)
-    }
 }
 
-// ================= EDITOR =================
+// ================= INIT =================
 window.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('canvas')
     const ctx = canvas.getContext('2d')
 
     statusEl = document.getElementById('status')
     barEl = document.getElementById('autosave-bar')
+    usersEl = document.getElementById('users')
 
     canvas.width = window.innerWidth
     canvas.height = window.innerHeight
@@ -107,15 +121,12 @@ window.addEventListener('DOMContentLoaded', () => {
         if (!ready) return
 
         const rect = canvas.getBoundingClientRect()
-        const pos = screenToWorld(
-            e.clientX - rect.left,
-            e.clientY - rect.top
-        )
+        const pos = screenToWorld(e.clientX - rect.left, e.clientY - rect.top)
 
         const x = Math.floor(pos.x / TILE_SIZE)
         const y = Math.floor(pos.y / TILE_SIZE)
-
         const key = `${x},${y}`
+
         if (painted.has(key)) return
         painted.add(key)
 
@@ -138,50 +149,47 @@ window.addEventListener('DOMContentLoaded', () => {
     canvas.addEventListener('mousemove', e => {
         if (isDrawing) paint(e)
 
-        // ==== SEND CURSOR ====
         if (myId) {
-            const rect = canvas.getBoundingClientRect()
+            const r = canvas.getBoundingClientRect()
             ws.send(JSON.stringify({
                 type: 'cursor',
-                x: e.clientX - rect.left,
-                y: e.clientY - rect.top
+                x: e.clientX - r.left,
+                y: e.clientY - r.top
             }))
         }
     })
 
     window.addEventListener('mouseup', () => {
-        if (!isDrawing) return
+        if (!isDrawing || !brushActions.length) return
         isDrawing = false
-        if (!brushActions.length) return
 
         const brush = { type: 'brush', actions: brushActions }
         push(brush)
         ws.send(JSON.stringify({ type: 'action', action: brush }))
     })
 
-    window.addEventListener('keydown', e => {
-        if (e.ctrlKey && e.key === 's') {
-            e.preventDefault()
-            ws.send(JSON.stringify({ type: 'save' }))
-        }
-    })
-
     function loop() {
         render(ctx, canvas)
         drawGrid(ctx, canvas)
 
-        // ==== DRAW OTHER CURSORS ====
+        const now = Date.now()
+
         for (const [id, c] of cursors) {
             if (id === myId) continue
 
-            ctx.fillStyle = 'rgba(0,150,255,0.9)'
+            const age = now - c.time
+            if (age > 3000) continue
+
+            const alpha = 1 - age / 3000
+            ctx.globalAlpha = alpha
+            ctx.fillStyle = c.color
             ctx.beginPath()
             ctx.arc(c.x, c.y, 4, 0, Math.PI * 2)
             ctx.fill()
 
-            ctx.fillStyle = '#09f'
-            ctx.font = '10px monospace'
-            ctx.fillText(id, c.x + 6, c.y - 6)
+            ctx.font = '11px monospace'
+            ctx.fillText(c.name, c.x + 6, c.y - 6)
+            ctx.globalAlpha = 1
         }
 
         requestAnimationFrame(loop)
@@ -189,3 +197,14 @@ window.addEventListener('DOMContentLoaded', () => {
 
     loop()
 })
+
+// ================= USERS UI =================
+function renderUsers() {
+    usersEl.innerHTML = ''
+    for (const u of users.values()) {
+        const div = document.createElement('div')
+        div.textContent = u.name
+        div.style.color = u.color
+        usersEl.appendChild(div)
+    }
+}

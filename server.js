@@ -18,26 +18,40 @@ const MAP_PATH = path.join(__dirname, 'assets/maps/level1.json')
 const map = new Map()
 let autosaveTimer = null
 
-// ================= USERS (CURSORS) =================
-const clients = new Map() // ws -> { id }
+// ================= USERS =================
+const clients = new Map() // ws -> user
+
+function colorFromId(id) {
+    let hash = 0
+    for (let i = 0; i < id.length; i++) {
+        hash = id.charCodeAt(i) + ((hash << 5) - hash)
+    }
+    return `hsl(${Math.abs(hash) % 360}, 80%, 60%)`
+}
 
 // ================= LOAD MAP =================
 if (fs.existsSync(MAP_PATH)) {
     const data = JSON.parse(fs.readFileSync(MAP_PATH, 'utf8'))
-    for (const [k, v] of Object.entries(data)) {
-        map.set(k, v)
-    }
-    console.log(`[LOAD] map loaded (${map.size} tiles)`)
+    for (const [k, v] of Object.entries(data)) map.set(k, v)
 }
 
 // ================= BROADCAST =================
 function broadcast(msg, except = null) {
     const data = JSON.stringify(msg)
     for (const c of wss.clients) {
-        if (c !== except && c.readyState === 1) {
-            c.send(data)
-        }
+        if (c !== except && c.readyState === 1) c.send(data)
     }
+}
+
+function broadcastUsers() {
+    broadcast({
+        type: 'users',
+        users: [...clients.values()].map(u => ({
+            id: u.id,
+            name: u.name,
+            color: u.color
+        }))
+    })
 }
 
 // ================= SAVE =================
@@ -47,19 +61,12 @@ function saveMap(reason = 'manual') {
         JSON.stringify(Object.fromEntries(map), null, 2)
     )
 
-    broadcast({
-        type: 'saved',
-        reason,
-        time: Date.now()
-    })
-
-    console.log(`[SAVE] map saved (${reason})`)
+    broadcast({ type: 'saved', reason, time: Date.now() })
 }
 
 // ================= AUTOSAVE =================
 function scheduleAutosave() {
-    if (autosaveTimer) clearTimeout(autosaveTimer)
-
+    clearTimeout(autosaveTimer)
     broadcast({ type: 'saving', mode: 'autosave' })
 
     autosaveTimer = setTimeout(() => {
@@ -79,54 +86,47 @@ function applyServerAction(action) {
 
     if (action.type === 'setTile') {
         const key = `${action.x},${action.y}`
-        if (action.after === 0) map.delete(key)
-        else map.set(key, action.after)
+        action.after === 0 ? map.delete(key) : map.set(key, action.after)
     }
 }
 
 // ================= WEBSOCKET =================
 wss.on('connection', ws => {
+    const id = crypto.randomUUID().slice(0, 6)
     const user = {
-        id: crypto.randomUUID().slice(0, 8)
+        id,
+        name: `User-${id}`,
+        color: colorFromId(id)
     }
+
     clients.set(ws, user)
 
-    // отправляем ID клиенту
-    ws.send(JSON.stringify({
-        type: 'hello',
-        id: user.id
-    }))
+    ws.send(JSON.stringify({ type: 'hello', ...user }))
+    ws.send(JSON.stringify({ type: 'snapshot', map: Object.fromEntries(map) }))
 
-    // snapshot карты
-    ws.send(JSON.stringify({
-        type: 'snapshot',
-        map: Object.fromEntries(map)
-    }))
-
-    broadcast({ type: 'user', event: 'join', id: user.id })
+    broadcastUsers()
 
     ws.on('message', data => {
         const msg = JSON.parse(data)
 
-        // ===== CURSOR =====
         if (msg.type === 'cursor') {
             broadcast({
                 type: 'cursor',
                 id: user.id,
+                name: user.name,
+                color: user.color,
                 x: msg.x,
-                y: msg.y
+                y: msg.y,
+                t: Date.now()
             }, ws)
-            return
         }
 
-        // ===== ACTION =====
         if (msg.type === 'action') {
             applyServerAction(msg.action)
             scheduleAutosave()
             broadcast({ type: 'action', action: msg.action }, ws)
         }
 
-        // ===== SAVE =====
         if (msg.type === 'save') {
             broadcast({ type: 'saving', mode: 'manual' })
             saveMap('manual')
@@ -136,11 +136,10 @@ wss.on('connection', ws => {
     ws.on('close', () => {
         clients.delete(ws)
         broadcast({ type: 'cursor-leave', id: user.id })
-        broadcast({ type: 'user', event: 'leave', id: user.id })
+        broadcastUsers()
     })
 })
 
-// ================= START =================
 server.listen(PORT, '127.0.0.1', () => {
     console.log(`🚀 Node engine on http://127.0.0.1:${PORT}`)
 })

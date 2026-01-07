@@ -3,29 +3,101 @@
 <head>
     <meta charset="UTF-8" />
     <title>Map Editor</title>
+
     <style>
         html, body {
             margin: 0;
             padding: 0;
             overflow: hidden;
             background: #111;
+            color: #ddd;
+            font-family: monospace;
         }
+
         canvas {
             display: block;
         }
+
+        /* ===== USERS LIST ===== */
+        #users {
+            position: fixed;
+            left: 10px;
+            top: 10px;
+            background: rgba(0,0,0,0.6);
+            padding: 6px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            min-width: 120px;
+        }
+
+        #users div {
+            line-height: 1.4em;
+            white-space: nowrap;
+        }
+
+        /* ===== STATUS ===== */
+        #status-panel {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            font-size: 13px;
+            text-align: right;
+        }
+
+        #status {
+            margin-bottom: 4px;
+        }
+
+        #autosave-bg {
+            width: 120px;
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        #autosave-bar {
+            height: 100%;
+            width: 0%;
+            background: #ffb300;
+            transition: width 3s linear;
+        }
+
+        /* ===== HINT ===== */
+        #hint {
+            position: fixed;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+            opacity: 0.5;
+        }
     </style>
 </head>
+
 <body>
-<div style="position:fixed; top:10px; right:10px; font-family:monospace;">
-    <div id="status">✓ Saved</div>
-    <div style="width:120px; height:4px; background:#333; margin-top:4px;">
-        <div id="autosave-bar"
-             style="height:100%; width:0%; background:#ffb300; transition:width 3s linear;">
-        </div>
+
+<!-- USERS -->
+<div id="users"></div>
+
+<!-- STATUS -->
+<div id="status-panel">
+    <div id="status">✓ Сохранено</div>
+    <div id="autosave-bg">
+        <div id="autosave-bar"></div>
     </div>
 </div>
 
+<!-- CANVAS -->
 <canvas id="canvas"></canvas>
+
+<!-- HINT -->
+<div id="hint">
+    ЛКМ — рисовать • Ctrl+S — Сохранить • Редактор для совместной работы в реальном времени
+</div>
+
+<!-- EDITOR -->
 <script type="module" src="/editor/editor.js"></script>
+
 </body>
 </html>
