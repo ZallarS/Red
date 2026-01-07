@@ -9,7 +9,7 @@ import {
     send,
     on,
     getStatus,
-    getPing          // ★
+    getPing
 } from './ws.js'
 
 /* ================= STATE ================= */
@@ -36,8 +36,8 @@ function updateStatus() {
     if (!statusEl) return
 
     const wsStatus = getStatus()
-    const ping = getPing() // ★
-    const pingText = ping != null ? ` · ${ping}ms` : '' // ★
+    const ping = getPing()
+    const pingText = ping != null ? ` · ${ping}ms` : ''
 
     if (wsStatus === 'reconnecting') {
         statusEl.textContent = '⟳ Reconnecting…'
@@ -63,14 +63,14 @@ function updateStatus() {
         return
     }
 
-    statusEl.textContent = `✓ Online${pingText}` // ★
+    statusEl.textContent = `✓ Online${pingText}`
     statusEl.style.color = '#4caf50'
 }
 
 /* ================= WS ================= */
 
 on('status', updateStatus)
-on('ping', updateStatus) // ★
+on('ping', updateStatus)
 
 on('message', msg => {
 
@@ -271,7 +271,12 @@ function renderUsers() {
     for (const u of users.values()) {
         const div = document.createElement('div')
         div.style.color = u.color
-        div.textContent = u.editing ? `${u.name}▌` : u.name
+
+        const pingText = u.ping != null ? ` · ${u.ping}ms` : ''
+
+        div.textContent = u.editing
+            ? `${u.name}▌${pingText}`
+            : `${u.name}${pingText}`
 
         if (u.id === myId) {
             div.ondblclick = () => {

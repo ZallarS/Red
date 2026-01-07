@@ -19,8 +19,8 @@ const map = new Map()
 let autosaveTimer = null
 
 // ================= USERS =================
-const clients = new Map() // ws -> user
-const sessions = new Map() // sessionId -> { name, color }
+const clients = new Map()
+const sessions = new Map()
 
 function colorFromId(id) {
     let hash = 0
@@ -55,7 +55,8 @@ function broadcastUsers() {
             id: u.id,
             name: u.name,
             color: u.color,
-            editing: u.editing === true
+            editing: u.editing === true,
+            ping: u.ping ?? null
         }))
     })
 }
@@ -113,7 +114,8 @@ wss.on('connection', ws => {
                     id: sessionId.slice(0, 6),
                     name: s.name,
                     color: s.color,
-                    editing: false
+                    editing: false,
+                    ping: null
                 }
             } else {
                 sessionId = crypto.randomUUID()
@@ -121,7 +123,8 @@ wss.on('connection', ws => {
                     id: sessionId.slice(0, 6),
                     name: `User-${sessionId.slice(0, 4)}`,
                     color: colorFromId(sessionId),
-                    editing: false
+                    editing: false,
+                    ping: null
                 }
                 sessions.set(sessionId, {
                     name: user.name,
@@ -153,6 +156,13 @@ wss.on('connection', ws => {
         // ===== PING =====
         if (msg.type === 'ping') {
             ws.send(JSON.stringify({ type: 'pong', t: msg.t }))
+            return
+        }
+
+        // ===== LATENCY =====
+        if (msg.type === 'latency') {
+            user.ping = Math.max(0, Math.min(999, msg.ping | 0))
+            broadcastUsers()
             return
         }
 

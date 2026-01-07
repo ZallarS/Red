@@ -1,6 +1,7 @@
 let ws = null
 let status = 'offline'
 let retries = 0
+
 let ping = null
 let pingTimer = null
 
@@ -30,7 +31,7 @@ export function connect() {
     status = 'connecting'
     emit('status', status)
 
-    ws = new WebSocket('wss://lib31.ru/ws/')
+    ws = new WebSocket('wss://lib31.ru/ws')
 
     ws.onopen = () => {
         status = 'online'
@@ -43,7 +44,10 @@ export function connect() {
         }))
 
         pingTimer = setInterval(() => {
-            ws.send(JSON.stringify({ type: 'ping', t: Date.now() }))
+            ws.send(JSON.stringify({
+                type: 'ping',
+                t: Date.now()
+            }))
         }, 2000)
     }
 
@@ -53,6 +57,11 @@ export function connect() {
         if (msg.type === 'pong') {
             ping = Date.now() - msg.t
             emit('ping', ping)
+
+            send({
+                type: 'latency',
+                ping
+            })
             return
         }
 
