@@ -22,6 +22,9 @@ let autosaveTimer = null
 const clients = new Map()
 const sessions = new Map()
 
+const AFK_TIME = 15_000
+const TIMEOUT_TIME = 60_000
+
 function colorFromId(id) {
     let hash = 0
     for (let i = 0; i < id.length; i++) {
@@ -56,10 +59,40 @@ function broadcastUsers() {
             name: u.name,
             color: u.color,
             editing: u.editing === true,
-            ping: u.ping ?? null
+            ping: u.ping ?? null,
+            afk: u.afk === true,
+            timeout: u.timeout === true
         }))
     })
 }
+
+// ================= ACTIVITY =================
+function markActive(user) {
+    user.lastActive = Date.now()
+    user.afk = false
+    user.timeout = false
+}
+
+// проверка AFK / timeout
+setInterval(() => {
+    const now = Date.now()
+    let changed = false
+
+    for (const u of clients.values()) {
+        const idle = now - (u.lastActive ?? now)
+
+        if (!u.timeout && idle > TIMEOUT_TIME) {
+            u.timeout = true
+            u.afk = true
+            changed = true
+        } else if (!u.afk && idle > AFK_TIME) {
+            u.afk = true
+            changed = true
+        }
+    }
+
+    if (changed) broadcastUsers()
+}, 2000)
 
 // ================= SAVE =================
 function saveMap(reason = 'manual') {
@@ -115,7 +148,10 @@ wss.on('connection', ws => {
                     name: s.name,
                     color: s.color,
                     editing: false,
-                    ping: null
+                    ping: null,
+                    lastActive: Date.now(),
+                    afk: false,
+                    timeout: false
                 }
             } else {
                 sessionId = crypto.randomUUID()
@@ -124,7 +160,10 @@ wss.on('connection', ws => {
                     name: `User-${sessionId.slice(0, 4)}`,
                     color: colorFromId(sessionId),
                     editing: false,
-                    ping: null
+                    ping: null,
+                    lastActive: Date.now(),
+                    afk: false,
+                    timeout: false
                 }
                 sessions.set(sessionId, {
                     name: user.name,
@@ -153,27 +192,41 @@ wss.on('connection', ws => {
 
         if (!user) return
 
-        // ===== PING =====
+        // любая активность
+        if (msg.type === 'cursor') {
+            markActive(user)
+
+            broadcast({
+                type: 'cursor',
+                id: user.id,
+                name: user.name,
+                color: user.color,
+                x: msg.x,
+                y: msg.y,
+                t: Date.now()
+            }, ws)
+            return
+        }
+
         if (msg.type === 'ping') {
             ws.send(JSON.stringify({ type: 'pong', t: msg.t }))
             return
         }
 
-        // ===== LATENCY =====
         if (msg.type === 'latency') {
             user.ping = Math.max(0, Math.min(999, msg.ping | 0))
             broadcastUsers()
             return
         }
 
-        // ===== RENAME =====
         if (msg.type === 'rename-start') {
+            markActive(user)
             user.editing = true
             broadcastUsers()
             return
         }
-
         if (msg.type === 'rename-preview') {
+            markActive(user)
             user.name = String(msg.name || '').slice(0, 24)
             user.editing = true
             sessions.set(sessionId, { name: user.name, color: user.color })
@@ -182,6 +235,7 @@ wss.on('connection', ws => {
         }
 
         if (msg.type === 'rename') {
+            markActive(user)
             user.name = String(msg.name || '').slice(0, 24)
             user.editing = false
             sessions.set(sessionId, { name: user.name, color: user.color })
@@ -189,7 +243,6 @@ wss.on('connection', ws => {
             return
         }
 
-        // ===== CURSOR =====
         if (msg.type === 'cursor') {
             broadcast({
                 type: 'cursor',
@@ -203,15 +256,15 @@ wss.on('connection', ws => {
             return
         }
 
-        // ===== ACTION =====
         if (msg.type === 'action') {
+            markActive(user)
+
             applyServerAction(msg.action)
             scheduleAutosave()
             broadcast({ type: 'action', action: msg.action }, ws)
             return
         }
 
-        // ===== SAVE =====
         if (msg.type === 'save') {
             broadcast({ type: 'saving', mode: 'manual' })
             saveMap('manual')

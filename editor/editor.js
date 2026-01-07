@@ -242,11 +242,12 @@ window.addEventListener('DOMContentLoaded', () => {
 
         for (const [id, c] of cursors) {
             if (id === myId) continue
+            if (users.get(id)?.timeout) continue   // ⬅ timeout — не рисуем курсор
 
             const age = now - c.time
             if (age > 3000) continue
 
-            ctx.globalAlpha = 1 - age / 3000
+            ctx.globalAlpha = users.get(id)?.afk ? 0.4 : 1
             ctx.fillStyle = c.color
             ctx.beginPath()
             ctx.arc(c.x, c.y, 4, 0, Math.PI * 2)
@@ -269,16 +270,37 @@ function renderUsers() {
     usersEl.innerHTML = ''
 
     for (const u of users.values()) {
-        const div = document.createElement('div')
-        div.style.color = u.color
+
+        let indicator = '●'
+        let indicatorColor = '#4caf50'
+
+        if (u.timeout) {
+            indicator = '✕'
+            indicatorColor = '#666'
+        } else if (u.afk) {
+            indicator = '○'
+            indicatorColor = '#999'
+        }
 
         const pingText = u.ping != null ? ` · ${u.ping}ms` : ''
 
-        div.textContent = u.editing
+        const div = document.createElement('div')
+        div.style.color = u.timeout ? '#666' : u.color
+
+        const ind = document.createElement('span')
+        ind.textContent = indicator
+        ind.style.color = indicatorColor
+        ind.style.marginRight = '6px'
+
+        const text = document.createElement('span')
+        text.textContent = u.editing
             ? `${u.name}▌${pingText}`
             : `${u.name}${pingText}`
 
-        if (u.id === myId) {
+        div.appendChild(ind)
+        div.appendChild(text)
+
+        if (u.id === myId && !u.timeout) {
             div.ondblclick = () => {
                 isRenaming = true
                 const original = u.name
