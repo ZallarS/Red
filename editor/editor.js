@@ -4,10 +4,9 @@ import { screenToWorld } from './camera.js'
 import { TILE_SIZE, loadMap } from './map.js'
 import { push } from './history.js'
 import { createSetTileAction, applyAction } from './actions.js'
+import { connect, send, on, getStatus } from './ws.js'
 
 /* ================= STATE ================= */
-
-const ws = new WebSocket('wss://lib31.ru/ws')
 
 let ready = false
 let dirty = false
@@ -30,6 +29,20 @@ let isRenaming = false
 function updateStatus() {
     if (!statusEl) return
 
+    const wsStatus = getStatus()
+
+    if (wsStatus === 'reconnecting') {
+        statusEl.textContent = '⟳ Reconnecting…'
+        statusEl.style.color = '#ffb300'
+        return
+    }
+
+    if (wsStatus === 'offline') {
+        statusEl.textContent = '✕ Offline'
+        statusEl.style.color = '#ff5252'
+        return
+    }
+
     if (saving) {
         statusEl.textContent = 'Saving…'
         statusEl.style.color = '#ffb300'
@@ -42,20 +55,15 @@ function updateStatus() {
         return
     }
 
-    if (lastSaved) {
-        statusEl.textContent =
-            `✓ Saved ${new Date(lastSaved).toLocaleTimeString()}`
-        statusEl.style.color = '#4caf50'
-    } else {
-        statusEl.textContent = '✓ Saved'
-        statusEl.style.color = '#4caf50'
-    }
+    statusEl.textContent = '✓ Online'
+    statusEl.style.color = '#4caf50'
 }
 
-/* ================= WEBSOCKET ================= */
+/* ================= WS ================= */
 
-ws.onmessage = e => {
-    const msg = JSON.parse(e.data)
+on('status', updateStatus)
+
+on('message', msg => {
 
     if (msg.type === 'hello') {
         myId = msg.id
@@ -65,6 +73,7 @@ ws.onmessage = e => {
 
     if (msg.type === 'snapshot') {
         loadMap(msg.map)
+        cursors.clear()
         ready = true
         dirty = false
         updateStatus()
@@ -110,11 +119,13 @@ ws.onmessage = e => {
         barEl.style.width = '0%'
         updateStatus()
     }
-}
+})
 
 /* ================= INIT ================= */
 
 window.addEventListener('DOMContentLoaded', () => {
+    connect()
+
     const canvas = document.getElementById('canvas')
     const ctx = canvas.getContext('2d')
 
@@ -137,7 +148,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const painted = new Set()
 
     function paint(e) {
-        if (!ready) return
+        if (!ready || getStatus() !== 'online') return
 
         const rect = canvas.getBoundingClientRect()
         const pos = screenToWorld(e.clientX - rect.left, e.clientY - rect.top)
@@ -171,17 +182,15 @@ window.addEventListener('DOMContentLoaded', () => {
     })
 
     canvas.addEventListener('mousemove', e => {
-        if (isDrawing && (e.buttons & (1 | 2))) {
-            paint(e)
-        }
+        if (isDrawing && (e.buttons & (1 | 2))) paint(e)
 
-        if (myId) {
+        if (myId && getStatus() === 'online') {
             const r = canvas.getBoundingClientRect()
-            ws.send(JSON.stringify({
+            send({
                 type: 'cursor',
                 x: e.clientX - r.left,
                 y: e.clientY - r.top
-            }))
+            })
         }
     })
 
@@ -197,39 +206,22 @@ window.addEventListener('DOMContentLoaded', () => {
 
         const brush = { type: 'brush', actions: brushActions }
         push(brush)
-        ws.send(JSON.stringify({ type: 'action', action: brush }))
-    })
-
-    window.addEventListener('blur', () => {
-        isDrawing = false
-        eraseMode = false
-    })
-
-    canvas.addEventListener('mouseleave', () => {
-        isDrawing = false
-        eraseMode = false
+        send({ type: 'action', action: brush })
     })
 
     /* ================= CTRL + S ================= */
 
-    window.addEventListener(
-        'keydown',
-        e => {
-            if (!(e.ctrlKey || e.metaKey)) return
-            if (e.key.toLowerCase() !== 's') return
+    window.addEventListener('keydown', e => {
+        if (!(e.ctrlKey || e.metaKey)) return
+        if (e.key.toLowerCase() !== 's') return
 
-            e.preventDefault()
+        e.preventDefault()
+        if (!ready || saving || getStatus() !== 'online') return
 
-            // ❗ нельзя если карта не загружена или сейчас сохраняется
-            if (!ready || saving) return
-
-            saving = true
-            updateStatus()
-
-            ws.send(JSON.stringify({ type: 'save' }))
-        },
-        { capture: true }
-    )
+        saving = true
+        updateStatus()
+        send({ type: 'save' })
+    })
 
     /* ================= RENDER LOOP ================= */
 
@@ -288,17 +280,14 @@ function renderUsers() {
                 input.style.font = '13px monospace'
                 input.style.caretColor = u.color
 
-                ws.send(JSON.stringify({ type: 'rename-start' }))
+                send({ type: 'rename-start' })
 
                 input.oninput = () => {
-                    ws.send(JSON.stringify({
-                        type: 'rename-preview',
-                        name: input.value
-                    }))
+                    send({ type: 'rename-preview', name: input.value })
                 }
 
                 function finish(name) {
-                    ws.send(JSON.stringify({ type: 'rename', name }))
+                    send({ type: 'rename', name })
                     isRenaming = false
                     renderUsers()
                 }
