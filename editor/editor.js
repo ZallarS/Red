@@ -12,6 +12,9 @@ import {
     getPing
 } from './ws.js'
 
+import { initUI } from './ui/ui.js'
+import { subscribe, getState } from './ui/store.js'
+
 /* ================= SESSION RESTORE ================= */
 
 const SESSION_KEY = 'editor-session'
@@ -46,14 +49,19 @@ const users = new Map()
 let statusEl, barEl, usersEl
 let isRenaming = false
 
-// ⬇️ RESTORED UI STATE
-const session = loadSession()
+/* ================= UI STATE (from store) ================= */
 
-let gridEnabled = session.grid !== false
-let snappingEnabled = session.snapping !== false
-let panels = {
-    users: session.panels?.users !== false
-}
+let currentTool = 'draw'
+let gridEnabled = true
+let snappingEnabled = true
+let panels = { users: true }
+
+subscribe(state => {
+    currentTool = state.tool
+    gridEnabled = state.grid
+    snappingEnabled = state.snapping
+    panels = state.panels
+})
 
 /* ================= DEBUG OVERLAY ================= */
 
@@ -103,6 +111,7 @@ function updateDebugOverlay() {
         `FPS: ${fps}
 WS: ${getStatus()}
 RTT: ${getPing() ?? '-'}ms
+Tool: ${currentTool}
 Users: ${users.size}
 AFK: ${afk}
 Timeout: ${timeout}
@@ -247,8 +256,7 @@ window.addEventListener('DOMContentLoaded', () => {
     barEl = document.getElementById('autosave-bar')
     usersEl = document.getElementById('users')
 
-    usersEl.style.display = panels.users ? 'block' : 'none'
-
+    initUI(usersEl)
     initDebugOverlay()
 
     canvas.width = window.innerWidth
@@ -258,31 +266,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
     canvas.addEventListener('contextmenu', e => e.preventDefault())
 
-    window.addEventListener('keydown', e => {
-        if (e.key === '`' || e.key === '~') {
-            debugEnabled = !debugEnabled
-            localStorage.setItem('debug-overlay', debugEnabled ? '1' : '0')
-            debugEl.style.display = debugEnabled ? 'block' : 'none'
-        }
-
-        if (e.key === 'g') {
-            gridEnabled = !gridEnabled
-        }
-
-        if (e.key === 's') {
-            snappingEnabled = !snappingEnabled
-        }
-
-        if (e.key === 'u') {
-            panels.users = !panels.users
-            usersEl.style.display = panels.users ? 'block' : 'none'
-        }
-    })
-
     /* ================= DRAW ================= */
 
     let isDrawing = false
-    let eraseMode = loadSession().tool === 'erase'
     let brushActions = []
     const painted = new Set()
 
@@ -304,7 +290,7 @@ window.addEventListener('DOMContentLoaded', () => {
         if (painted.has(key)) return
         painted.add(key)
 
-        const tile = eraseMode ? 0 : 1
+        const tile = currentTool === 'erase' ? 0 : 1
         const action = createSetTileAction(x, y, tile)
         if (!action) return
 
@@ -317,15 +303,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     canvas.addEventListener('mousedown', e => {
         if (!(e.buttons & (1 | 2))) return
-
         isDrawing = true
-        eraseMode = !!(e.buttons & 2)
-
-        saveSession({
-            ...loadSession(),
-            tool: eraseMode ? 'erase' : 'draw'
-        })
-
         brushActions = []
         painted.clear()
         paint(e)
@@ -347,13 +325,10 @@ window.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('mouseup', () => {
         if (!isDrawing || !brushActions.length) {
             isDrawing = false
-            eraseMode = false
             return
         }
 
         isDrawing = false
-        eraseMode = false
-
         const brush = { type: 'brush', actions: brushActions }
         push(brush)
         send({ type: 'action', action: brush })
@@ -374,31 +349,9 @@ window.addEventListener('DOMContentLoaded', () => {
         render(ctx, canvas)
         if (gridEnabled) drawGrid(ctx, canvas)
 
-        const t = Date.now()
-
-        for (const [id, c] of cursors) {
-            if (id === myId) continue
-            if (users.get(id)?.timeout) continue
-
-            const age = t - c.time
-            if (age > 3000) continue
-
-            ctx.globalAlpha = users.get(id)?.afk ? 0.4 : 1
-            ctx.fillStyle = c.color
-            ctx.beginPath()
-            ctx.arc(c.x, c.y, 4, 0, Math.PI * 2)
-            ctx.fill()
-
-            ctx.font = '11px monospace'
-            ctx.fillText(c.name, c.x + 6, c.y - 6)
-            ctx.globalAlpha = 1
-        }
-
         saveSession({
             ...loadSession(),
-            grid: gridEnabled,
-            snapping: snappingEnabled,
-            panels,
+            ...getState(),
             camera: {
                 x: camera.x,
                 y: camera.y,
