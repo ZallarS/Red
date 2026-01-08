@@ -14,6 +14,7 @@ import { WS } from './protocol.js'
 import { createDebugOverlay } from './debug.js'
 import { initDrawing } from './drawing.js'
 import { applyAction } from './actions.js'
+import { initInput } from './input.js' // ✅ ДОБАВЛЕНО
 
 import { setUsers } from './ui/modules/usersPanel.js'
 
@@ -55,6 +56,9 @@ export function initEditor(snapshot) {
     canvas.focus()
 
     restoreCamera()
+
+    // ✅ ПОДКЛЮЧЕНИЕ INPUT
+    initInput(canvas)
 
     // ===== UI =====
     initUI({ role })

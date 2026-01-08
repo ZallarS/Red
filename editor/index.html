@@ -18,33 +18,11 @@
             z-index: 0;
             pointer-events: auto;
         }
-
-        /* ВСЁ UI — поверх, но БЕЗ перехвата мыши */
-        .ui-root {
-            position: absolute;
-            inset: 0;
-            z-index: 10;
-            pointer-events: none;
-        }
-
-        /* Кнопки и панели — МОГУТ ловить мышь */
-        .ui-root button,
-        .ui-root input,
-        .ui-root select,
-        .ui-panel {
-            pointer-events: auto;
-        }
     </style>
 </head>
 <body>
 
 <canvas id="canvas"></canvas>
-
-<div class="ui-root">
-    <div id="users" class="ui-panel"></div>
-    <div id="toolbar" class="ui-panel"></div>
-    <div id="autosave-bar"></div>
-</div>
 
 <script type="module" src="./editor.js"></script>
 </body>
