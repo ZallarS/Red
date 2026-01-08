@@ -1,27 +1,38 @@
 import { camera } from './camera.js'
 
 let dragging = false
-let last = { x: 0, y: 0 }
+let lastX = 0
+let lastY = 0
+let spacePressed = false
 
 export function initInput(canvas) {
+
+    window.addEventListener('keydown', e => {
+        if (e.code === 'Space') spacePressed = true
+    })
+
+    window.addEventListener('keyup', e => {
+        if (e.code === 'Space') spacePressed = false
+    })
+
     canvas.addEventListener('mousedown', e => {
-        if (e.button === 1 || e.spaceKey) {
+        if (e.button === 1 || spacePressed) {
             dragging = true
-            last.x = e.clientX
-            last.y = e.clientY
+            lastX = e.clientX
+            lastY = e.clientY
         }
     })
 
-    canvas.addEventListener('mouseup', () => dragging = false)
+    window.addEventListener('mouseup', () => dragging = false)
 
     canvas.addEventListener('mousemove', e => {
         if (!dragging) return
 
-        camera.x -= (e.clientX - last.x) / camera.zoom
-        camera.y -= (e.clientY - last.y) / camera.zoom
+        camera.x -= (e.clientX - lastX) / camera.zoom
+        camera.y -= (e.clientY - lastY) / camera.zoom
 
-        last.x = e.clientX
-        last.y = e.clientY
+        lastX = e.clientX
+        lastY = e.clientY
     })
 
     canvas.addEventListener('wheel', e => {

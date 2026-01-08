@@ -1,250 +1,36 @@
 import { render } from './render.js'
 import { drawGrid } from './grid.js'
-import { screenToWorld, camera } from './camera.js'
-import { TILE_SIZE, loadMap } from './map.js'
-import { push } from './history.js'
-import { createSetTileAction, applyAction } from './actions.js'
-import {
-    connect,
-    send,
-    on,
-    getStatus,
-    getPing
-} from './ws.js'
-
+import { camera } from './camera.js'
+import { loadMap } from './map.js'
 import { initUI } from './ui/ui.js'
 import { subscribe, getState } from './ui/store.js'
+import { connect, on } from './ws.js'
+import { WS } from './protocol.js'
 
-/* ================= SESSION RESTORE ================= */
+import { createDebugOverlay } from './debug.js'
+import { renderUsers } from './usersView.js'
+import { initDrawing } from './drawing.js'
 
-const SESSION_KEY = 'editor-session'
-
-function loadSession() {
-    try {
-        return JSON.parse(localStorage.getItem(SESSION_KEY)) || {}
-    } catch {
-        return {}
-    }
-}
-
-function saveSession(data) {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(data))
-}
-
-/* ================= STATE ================= */
-
-let ready = false
-let dirty = false
-
-let saving = false
-let lastSaved = null
-
-let myId = null
-let myName = ''
-let myColor = '#09f'
-
-const cursors = new Map()
 const users = new Map()
-
-let statusEl, barEl, usersEl
-let isRenaming = false
-
-/* ================= UI STATE (from store) ================= */
-
-let currentTool = 'draw'
-let gridEnabled = true
-let snappingEnabled = true
-let panels = { users: true }
-
-subscribe(state => {
-    currentTool = state.tool
-    gridEnabled = state.grid
-    snappingEnabled = state.snapping
-    panels = state.panels
-})
-
-/* ================= DEBUG OVERLAY ================= */
-
-let debugEnabled = localStorage.getItem('debug-overlay') === '1'
-let debugEl = null
+let usersEl, barEl
 let serverStats = null
 
-let fps = 0
-let frames = 0
-let lastFpsTime = performance.now()
+let uiState = getState()
+subscribe(s => uiState = s)
 
-function formatTime(ms) {
-    const s = Math.floor(ms / 1000)
-    const m = Math.floor(s / 60)
-    return m > 0 ? `${m}m ${s % 60}s` : `${s}s`
+const CAMERA_KEY = 'editor-camera'
+
+function restoreCamera() {
+    try {
+        const c = JSON.parse(localStorage.getItem(CAMERA_KEY))
+        if (!c) return
+        Object.assign(camera, c)
+    } catch {}
 }
 
-function initDebugOverlay() {
-    debugEl = document.createElement('div')
-    Object.assign(debugEl.style, {
-        position: 'fixed',
-        top: '8px',
-        left: '8px',
-        padding: '6px 8px',
-        background: 'rgba(0,0,0,0.6)',
-        color: '#0f0',
-        font: '11px monospace',
-        pointerEvents: 'none',
-        zIndex: 9999,
-        whiteSpace: 'pre',
-        display: debugEnabled ? 'block' : 'none'
-    })
-    document.body.appendChild(debugEl)
+function saveCamera() {
+    localStorage.setItem(CAMERA_KEY, JSON.stringify(camera))
 }
-
-function updateDebugOverlay() {
-    if (!debugEnabled || !debugEl) return
-
-    let afk = 0
-    let timeout = 0
-    for (const u of users.values()) {
-        if (u.timeout) timeout++
-        else if (u.afk) afk++
-    }
-
-    let text =
-        `FPS: ${fps}
-WS: ${getStatus()}
-RTT: ${getPing() ?? '-'}ms
-Tool: ${currentTool}
-Users: ${users.size}
-AFK: ${afk}
-Timeout: ${timeout}
-Grid: ${gridEnabled}
-Snap: ${snappingEnabled}`
-
-    if (serverStats) {
-        text += `
-Server:
- Uptime: ${formatTime(serverStats.uptime)}
- Clients: ${serverStats.clients}
- AFK: ${serverStats.afk}
- Timeout: ${serverStats.timeout}
- Tiles: ${serverStats.tiles}
- Autosave: ${serverStats.autosave}`
-    }
-
-    debugEl.textContent = text
-}
-
-/* ================= STATUS ================= */
-
-function updateStatus() {
-    if (!statusEl) return
-
-    const wsStatus = getStatus()
-    const ping = getPing()
-    const pingText = ping != null ? ` · ${ping}ms` : ''
-
-    if (wsStatus === 'reconnecting') {
-        statusEl.textContent = '⟳ Reconnecting…'
-        statusEl.style.color = '#ffb300'
-        return
-    }
-
-    if (wsStatus === 'offline') {
-        statusEl.textContent = '✕ Offline'
-        statusEl.style.color = '#ff5252'
-        return
-    }
-
-    if (saving) {
-        statusEl.textContent = 'Saving…'
-        statusEl.style.color = '#ffb300'
-        return
-    }
-
-    if (dirty) {
-        statusEl.textContent = '● Unsaved'
-        statusEl.style.color = '#ff5252'
-        return
-    }
-
-    statusEl.textContent = `✓ Online${pingText}`
-    statusEl.style.color = '#4caf50'
-}
-
-/* ================= WS ================= */
-
-on('status', updateStatus)
-on('ping', updateStatus)
-
-on('message', msg => {
-
-    if (msg.type === 'hello') {
-        myId = msg.id
-        myName = msg.name
-        myColor = msg.color
-    }
-
-    if (msg.type === 'snapshot') {
-        loadMap(msg.map)
-        cursors.clear()
-        ready = true
-        dirty = false
-
-        const s = loadSession()
-        if (s.camera) {
-            camera.x = s.camera.x ?? camera.x
-            camera.y = s.camera.y ?? camera.y
-            camera.zoom = s.camera.zoom ?? camera.zoom
-        }
-
-        updateStatus()
-    }
-
-    if (msg.type === 'users') {
-        users.clear()
-        msg.users.forEach(u => users.set(u.id, u))
-        if (!isRenaming && panels.users) renderUsers()
-        updateDebugOverlay()
-    }
-
-    if (msg.type === 'server-stats') {
-        serverStats = msg.stats
-        updateDebugOverlay()
-    }
-
-    if (msg.type === 'cursor') {
-        cursors.set(msg.id, {
-            x: msg.x,
-            y: msg.y,
-            name: msg.name,
-            color: msg.color,
-            time: msg.t
-        })
-    }
-
-    if (msg.type === 'cursor-leave') cursors.delete(msg.id)
-
-    if (msg.type === 'action') {
-        applyAction(msg.action)
-        push(msg.action)
-        dirty = true
-        updateStatus()
-    }
-
-    if (msg.type === 'saving') {
-        saving = true
-        barEl.style.width = '100%'
-        updateStatus()
-    }
-
-    if (msg.type === 'saved') {
-        saving = false
-        dirty = false
-        lastSaved = msg.time
-        barEl.style.width = '0%'
-        updateStatus()
-    }
-})
-
-/* ================= INIT ================= */
 
 window.addEventListener('DOMContentLoaded', () => {
     connect()
@@ -252,153 +38,64 @@ window.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('canvas')
     const ctx = canvas.getContext('2d')
 
-    statusEl = document.getElementById('status')
-    barEl = document.getElementById('autosave-bar')
     usersEl = document.getElementById('users')
+    barEl = document.getElementById('autosave-bar')
 
     initUI(usersEl)
-    initDebugOverlay()
+    restoreCamera()
 
     canvas.width = window.innerWidth
     canvas.height = window.innerHeight
     canvas.tabIndex = 0
     canvas.focus()
 
-    canvas.addEventListener('contextmenu', e => e.preventDefault())
+    const debug = createDebugOverlay()
+    debug.init()
 
-    /* ================= DRAW ================= */
+    const drawing = initDrawing(canvas, () => uiState)
 
-    let isDrawing = false
-    let brushActions = []
-    const painted = new Set()
+    on('message', msg => {
+        switch (msg.type) {
+            case WS.SNAPSHOT:
+                loadMap(msg.map)
+                drawing.setReady(true)
+                break
 
-    function paint(e) {
-        if (!ready || getStatus() !== 'online') return
+            case WS.HELLO:
+                drawing.setMyId(msg.id)
+                break
 
-        const rect = canvas.getBoundingClientRect()
-        const pos = screenToWorld(e.clientX - rect.left, e.clientY - rect.top)
+            case WS.USERS:
+                users.clear()
+                msg.users.forEach(u => users.set(u.id, u))
+                if (uiState.panels.users) {
+                    renderUsers(users, usersEl)
+                }
+                break
 
-        const x = snappingEnabled
-            ? Math.floor(pos.x / TILE_SIZE)
-            : Math.round(pos.x / TILE_SIZE)
+            case WS.SERVER_STATS:
+                serverStats = msg.stats
+                break
 
-        const y = snappingEnabled
-            ? Math.floor(pos.y / TILE_SIZE)
-            : Math.round(pos.y / TILE_SIZE)
+            case WS.SAVING:
+                barEl.style.width = '100%'
+                break
 
-        const key = `${x},${y}`
-        if (painted.has(key)) return
-        painted.add(key)
-
-        const tile = currentTool === 'erase' ? 0 : 1
-        const action = createSetTileAction(x, y, tile)
-        if (!action) return
-
-        applyAction(action)
-        brushActions.push(action)
-
-        dirty = true
-        updateStatus()
-    }
-
-    canvas.addEventListener('mousedown', e => {
-        if (!(e.buttons & (1 | 2))) return
-        isDrawing = true
-        brushActions = []
-        painted.clear()
-        paint(e)
-    })
-
-    canvas.addEventListener('mousemove', e => {
-        if (isDrawing && (e.buttons & (1 | 2))) paint(e)
-
-        if (myId && getStatus() === 'online') {
-            const r = canvas.getBoundingClientRect()
-            send({
-                type: 'cursor',
-                x: e.clientX - r.left,
-                y: e.clientY - r.top
-            })
+            case WS.SAVED:
+                barEl.style.width = '0%'
+                break
         }
     })
-
-    window.addEventListener('mouseup', () => {
-        if (!isDrawing || !brushActions.length) {
-            isDrawing = false
-            return
-        }
-
-        isDrawing = false
-        const brush = { type: 'brush', actions: brushActions }
-        push(brush)
-        send({ type: 'action', action: brush })
-    })
-
-    /* ================= RENDER LOOP ================= */
 
     function loop() {
-        frames++
-        const now = performance.now()
-        if (now - lastFpsTime >= 1000) {
-            fps = frames
-            frames = 0
-            lastFpsTime = now
-            updateDebugOverlay()
-        }
-
         render(ctx, canvas)
-        if (gridEnabled) drawGrid(ctx, canvas)
+        if (uiState.grid) drawGrid(ctx, canvas)
 
-        saveSession({
-            ...loadSession(),
-            ...getState(),
-            camera: {
-                x: camera.x,
-                y: camera.y,
-                zoom: camera.zoom
-            }
-        })
+        debug.update(serverStats, uiState, users.size)
+        saveCamera()
 
         requestAnimationFrame(loop)
     }
 
     loop()
 })
-
-/* ================= USERS ================= */
-
-function renderUsers() {
-    usersEl.innerHTML = ''
-
-    for (const u of users.values()) {
-        let indicator = '●'
-        let indicatorColor = '#4caf50'
-
-        if (u.timeout) {
-            indicator = '✕'
-            indicatorColor = '#666'
-        } else if (u.afk) {
-            indicator = '○'
-            indicatorColor = '#999'
-        }
-
-        const pingText = u.ping != null ? ` · ${u.ping}ms` : ''
-
-        const div = document.createElement('div')
-        div.style.color = u.timeout ? '#666' : u.color
-
-        const ind = document.createElement('span')
-        ind.textContent = indicator
-        ind.style.color = indicatorColor
-        ind.style.marginRight = '6px'
-
-        const text = document.createElement('span')
-        text.textContent = u.editing
-            ? `${u.name}▌${pingText}`
-            : `${u.name}${pingText}`
-
-        div.appendChild(ind)
-        div.appendChild(text)
-        usersEl.appendChild(div)
-    }
-}

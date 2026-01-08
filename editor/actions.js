@@ -1,34 +1,34 @@
-import { setTile, getTile } from './map.js'
+import { getTile, setTile } from './map.js'
 
-export function createSetTileAction(x, y, after) {
+export function createSetTileAction(x, y, tile) {
     const before = getTile(x, y)
-    if (before === after) return null
+    if (before === tile) return null
 
-    return { type: 'setTile', x, y, before, after }
+    return {
+        type: 'setTile',
+        x,
+        y,
+        before,
+        after: tile
+    }
 }
 
 export function applyAction(action) {
     if (!action) return
 
-    if (action.type === 'brush') {
-        action.actions.forEach(applyAction)
-        return
-    }
-
-    if (action.type === 'setTile') {
-        setTile(action.x, action.y, action.after)
+    switch (action.type) {
+        case 'setTile':
+            setTile(action.x, action.y, action.after)
+            break
     }
 }
 
 export function revertAction(action) {
     if (!action) return
 
-    if (action.type === 'brush') {
-        [...action.actions].reverse().forEach(revertAction)
-        return
-    }
-
-    if (action.type === 'setTile') {
-        setTile(action.x, action.y, action.before)
+    switch (action.type) {
+        case 'setTile':
+            setTile(action.x, action.y, action.before)
+            break
     }
 }

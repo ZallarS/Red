@@ -1,3 +1,5 @@
+import { WS } from './protocol.js'
+
 let ws = null
 let status = 'offline'
 let retries = 0
@@ -39,13 +41,13 @@ export function connect() {
         emit('status', status)
 
         ws.send(JSON.stringify({
-            type: 'auth',
+            type: WS.AUTH,
             sessionId
         }))
 
         pingTimer = setInterval(() => {
             ws.send(JSON.stringify({
-                type: 'ping',
+                type: WS.PING,
                 t: Date.now()
             }))
         }, 2000)
@@ -54,18 +56,18 @@ export function connect() {
     ws.onmessage = e => {
         const msg = JSON.parse(e.data)
 
-        if (msg.type === 'pong') {
+        if (msg.type === WS.PONG) {
             ping = Date.now() - msg.t
             emit('ping', ping)
 
             send({
-                type: 'latency',
+                type: WS.LATENCY,
                 ping
             })
             return
         }
 
-        if (msg.type === 'hello' && msg.sessionId) {
+        if (msg.type === WS.HELLO && msg.sessionId) {
             sessionId = msg.sessionId
             localStorage.setItem(sessionKey, sessionId)
         }

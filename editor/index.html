@@ -1,103 +1,51 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8" />
-    <title>Map Editor</title>
-
+    <meta charset="UTF-8">
+    <title>Editor</title>
     <style>
         html, body {
             margin: 0;
             padding: 0;
-            overflow: hidden;
-            background: #111;
-            color: #ddd;
-            font-family: monospace;
-        }
-
-        canvas {
-            display: block;
-        }
-
-        /* ===== USERS LIST ===== */
-        #users {
-            position: fixed;
-            left: 10px;
-            top: 10px;
-            background: rgba(0,0,0,0.6);
-            padding: 6px 8px;
-            border-radius: 4px;
-            font-size: 13px;
-            min-width: 120px;
-        }
-
-        #users div {
-            line-height: 1.4em;
-            white-space: nowrap;
-        }
-
-        /* ===== STATUS ===== */
-        #status-panel {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            font-size: 13px;
-            text-align: right;
-        }
-
-        #status {
-            margin-bottom: 4px;
-        }
-
-        #autosave-bg {
-            width: 120px;
-            height: 4px;
-            background: #333;
-            border-radius: 2px;
-            overflow: hidden;
-        }
-
-        #autosave-bar {
+            width: 100%;
             height: 100%;
-            width: 0%;
-            background: #ffb300;
-            transition: width 3s linear;
+            overflow: hidden;
         }
 
-        /* ===== HINT ===== */
-        #hint {
-            position: fixed;
-            bottom: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 12px;
-            opacity: 0.5;
+        #canvas {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            pointer-events: auto;
+        }
+
+        /* ВСЁ UI — поверх, но БЕЗ перехвата мыши */
+        .ui-root {
+            position: absolute;
+            inset: 0;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        /* Кнопки и панели — МОГУТ ловить мышь */
+        .ui-root button,
+        .ui-root input,
+        .ui-root select,
+        .ui-panel {
+            pointer-events: auto;
         }
     </style>
 </head>
-
 <body>
 
-<!-- USERS -->
-<div id="users"></div>
-
-<!-- STATUS -->
-<div id="status-panel">
-    <div id="status">✓ Сохранено</div>
-    <div id="autosave-bg">
-        <div id="autosave-bar"></div>
-    </div>
-</div>
-
-<!-- CANVAS -->
 <canvas id="canvas"></canvas>
 
-<!-- HINT -->
-<div id="hint">
-    ЛКМ — рисовать • Ctrl+S — Сохранить • Редактор для совместной работы в реальном времени
+<div class="ui-root">
+    <div id="users" class="ui-panel"></div>
+    <div id="toolbar" class="ui-panel"></div>
+    <div id="autosave-bar"></div>
 </div>
 
-<!-- EDITOR -->
-<script type="module" src="/editor/editor.js"></script>
-
+<script type="module" src="./editor.js"></script>
 </body>
 </html>

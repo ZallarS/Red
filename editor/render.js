@@ -1,15 +1,25 @@
-import { map, TILE_SIZE } from './map.js'
-import { camera } from './camera.js'
+import { TILE_SIZE, getTile } from './map.js'
 
 export function render(ctx, canvas) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-    for (const [key] of map.tiles) {
-        const [x, y] = key.split(',').map(Number)
-        const sx = x * TILE_SIZE - camera.x
-        const sy = y * TILE_SIZE - camera.y
+    ctx.fillStyle = '#444'
 
-        ctx.fillStyle = '#4caf50'
-        ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE)
+    const cols = Math.ceil(canvas.width / TILE_SIZE)
+    const rows = Math.ceil(canvas.height / TILE_SIZE)
+
+    for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+            const tile = getTile(x, y)
+            if (!tile) continue
+
+            ctx.fillRect(
+                x * TILE_SIZE,
+                y * TILE_SIZE,
+                TILE_SIZE,
+                TILE_SIZE
+            )
+        }
     }
 }
