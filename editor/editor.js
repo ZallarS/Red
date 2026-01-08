@@ -1,3 +1,5 @@
+// editor/editor.js
+
 import { render } from './render.js'
 import { drawGrid } from './grid.js'
 import { camera } from './camera.js'
@@ -10,8 +12,11 @@ import { WS } from './protocol.js'
 import { createDebugOverlay } from './debug.js'
 import { renderUsers } from './usersView.js'
 import { initDrawing } from './drawing.js'
+import { applyAction } from './actions.js'
 
 const users = new Map()
+const cursors = new Map() // ✅ КУРСОРЫ
+
 let usersEl, barEl
 let serverStats = null
 
@@ -73,6 +78,25 @@ window.addEventListener('DOMContentLoaded', () => {
                 }
                 break
 
+            case WS.ACTION:
+                applyAction(msg.action)
+                break
+
+            // ===== CURSORS =====
+            case WS.CURSOR:
+                cursors.set(msg.id, {
+                    x: msg.x,
+                    y: msg.y,
+                    color: msg.color,
+                    name: msg.name,
+                    t: msg.t || Date.now()
+                })
+                break
+
+            case WS.CURSOR_LEAVE:
+                cursors.delete(msg.id)
+                break
+
             case WS.SERVER_STATS:
                 serverStats = msg.stats
                 break
@@ -88,7 +112,7 @@ window.addEventListener('DOMContentLoaded', () => {
     })
 
     function loop() {
-        render(ctx, canvas)
+        render(ctx, canvas, cursors) // ✅ передаём курсоры
         if (uiState.grid) drawGrid(ctx, canvas)
 
         debug.update(serverStats, uiState, users.size)
