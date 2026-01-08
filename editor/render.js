@@ -4,9 +4,17 @@ import { camera } from './camera.js'
 import {
     TILE_SIZE,
     CHUNK_SIZE,
+    LOD_LEVELS,
     getVisibleChunks,
-    redrawChunk
+    redrawChunkLOD
 } from './map.js'
+
+function getLOD(zoom) {
+    if (zoom >= 1.0) return LOD_LEVELS.FULL
+    if (zoom >= 0.6) return LOD_LEVELS.SIMPLE
+    if (zoom >= 0.35) return LOD_LEVELS.DOT
+    return null
+}
 
 export function render(ctx, canvas, cursors = new Map()) {
     // ===== RESET =====
@@ -23,20 +31,21 @@ export function render(ctx, canvas, cursors = new Map()) {
         -camera.y * camera.zoom
     )
 
-    // ===== MAP =====
-    const chunks = getVisibleChunks(camera, canvas)
-    for (const chunk of chunks) {
-        redrawChunk(chunk)
-        ctx.drawImage(
-            chunk.canvas,
-            chunk.cx * CHUNK_SIZE * TILE_SIZE,
-            chunk.cy * CHUNK_SIZE * TILE_SIZE
-        )
+    const lod = getLOD(camera.zoom)
+    if (lod !== null) {
+        const chunks = getVisibleChunks(camera, canvas)
+        for (const chunk of chunks) {
+            redrawChunkLOD(chunk, lod)
+            ctx.drawImage(
+                chunk.canvases.get(lod).canvas,
+                chunk.cx * CHUNK_SIZE * TILE_SIZE,
+                chunk.cy * CHUNK_SIZE * TILE_SIZE
+            )
+        }
     }
 
-    // ===== CURSORS (SCREEN SPACE) =====
+    // ===== CURSORS =====
     ctx.setTransform(1, 0, 0, 1, 0, 0)
-
     for (const c of cursors.values()) {
         const sx = (c.x - camera.x) * camera.zoom
         const sy = (c.y - camera.y) * camera.zoom
