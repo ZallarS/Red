@@ -15,7 +15,11 @@ import { initDrawing } from './drawing.js'
 import { applyAction } from './actions.js'
 
 const users = new Map()
-const cursors = new Map() // ✅ КУРСОРЫ
+const cursors = new Map()        // ✅ КУРСОРЫ
+const softLocks = new Map()      // ✅ SOFT-LOCK ЗОНЫ
+
+const SOFT_LOCK_RADIUS = 48
+const SOFT_LOCK_TTL = 500
 
 let usersEl, barEl
 let serverStats = null
@@ -82,7 +86,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 applyAction(msg.action)
                 break
 
-            // ===== CURSORS =====
+            // ===== CURSORS + SOFT LOCK =====
             case WS.CURSOR:
                 cursors.set(msg.id, {
                     x: msg.x,
@@ -91,10 +95,22 @@ window.addEventListener('DOMContentLoaded', () => {
                     name: msg.name,
                     t: msg.t || Date.now()
                 })
+
+                if (msg.painting) {
+                    softLocks.set(msg.id, {
+                        x: msg.x,
+                        y: msg.y,
+                        radius: SOFT_LOCK_RADIUS,
+                        color: msg.color,
+                        name: msg.name,
+                        t: performance.now()
+                    })
+                }
                 break
 
             case WS.CURSOR_LEAVE:
                 cursors.delete(msg.id)
+                softLocks.delete(msg.id)
                 break
 
             case WS.SERVER_STATS:
@@ -111,8 +127,18 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     })
 
+    // ===== CLEANUP OLD SOFT LOCKS =====
+    setInterval(() => {
+        const now = performance.now()
+        for (const [id, lock] of softLocks) {
+            if (now - lock.t > SOFT_LOCK_TTL) {
+                softLocks.delete(id)
+            }
+        }
+    }, 250)
+
     function loop() {
-        render(ctx, canvas, cursors) // ✅ передаём курсоры
+        render(ctx, canvas, cursors, softLocks) // ✅ передаём softLocks
         if (uiState.grid) drawGrid(ctx, canvas)
 
         debug.update(serverStats, uiState, users.size)

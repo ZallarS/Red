@@ -233,7 +233,19 @@ wss.on('connection', ws => {
         // ===== STRONG ACTIVITY =====
         if (msg.type === 'cursor') {
             markActive(user)
-            broadcast({ type: 'cursor', id: user.id, name: user.name, color: user.color, x: msg.x, y: msg.y, t: Date.now() }, ws)
+            broadcast(
+                {
+                    type: 'cursor',
+                    id: user.id,
+                    name: user.name,
+                    color: user.color,
+                    x: msg.x,
+                    y: msg.y,
+                    painting: !!msg.painting, // ✅ КЛЮЧЕВОЙ ФИКС
+                    t: Date.now()
+                },
+                ws
+            )
             return
         }
 

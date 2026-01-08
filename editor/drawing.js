@@ -1,3 +1,5 @@
+// editor/drawing.js
+
 import { screenToWorld } from './camera.js'
 import { TILE_SIZE } from './map.js'
 import { createSetTileAction, applyAction } from './actions.js'
@@ -75,7 +77,7 @@ export function initDrawing(canvas, getState) {
     let ready = false
     let myId = null
     let activeTool = null
-    let drawing = false
+    let drawing = false   // ← уже есть, используем как painting
 
     const brushTool = createBrushTool(getState)
 
@@ -85,6 +87,19 @@ export function initDrawing(canvas, getState) {
 
     function setMyId(id) {
         myId = id
+    }
+
+    function sendCursor(e) {
+        if (!myId || getStatus() !== 'online') return
+
+        const r = canvas.getBoundingClientRect()
+
+        send({
+            type: WS.CURSOR,
+            x: e.clientX - r.left,
+            y: e.clientY - r.top,
+            painting: drawing   // ✅ ВАЖНО
+        })
     }
 
     function getContext(e) {
@@ -110,6 +125,9 @@ export function initDrawing(canvas, getState) {
         drawing = true
         activeTool = brushTool
         activeTool.begin(getContext(e))
+
+        // ✅ сразу сообщаем, что начали рисовать
+        sendCursor(e)
     })
 
     canvas.addEventListener('mousemove', e => {
@@ -117,22 +135,19 @@ export function initDrawing(canvas, getState) {
             activeTool.move(getContext(e))
         }
 
-        if (myId && getStatus() === 'online') {
-            const r = canvas.getBoundingClientRect()
-            send({
-                type: WS.CURSOR,
-                x: e.clientX - r.left,
-                y: e.clientY - r.top
-            })
-        }
+        // ✅ курсор всегда шлётся, но с флагом painting
+        sendCursor(e)
     })
 
-    window.addEventListener('mouseup', () => {
+    window.addEventListener('mouseup', e => {
         if (!drawing || !activeTool) return
 
         drawing = false
         activeTool.end({ ready })
         activeTool = null
+
+        // ✅ сообщаем, что рисование закончилось
+        sendCursor(e)
     })
 
     return { setReady, setMyId }
