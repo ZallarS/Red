@@ -5,25 +5,15 @@ import { push } from './history.js'
 import { send, getStatus } from './ws.js'
 import { WS, ACTION } from './protocol.js'
 
-export function initDrawing(canvas, getState) {
-    console.log('[DRAWING] initDrawing called', canvas)
-    let ready = false
-    let myId = null
+/**
+ * ===== TOOL IMPLEMENTATIONS =====
+ */
 
-    let isDrawing = false
-    let brushActions = []
+function createBrushTool(getState) {
     const painted = new Set()
+    const actions = []
 
-    function setReady(v) { ready = v }
-    function setMyId(id) { myId = id }
-
-    function paint(e) {
-        const rect = canvas.getBoundingClientRect()
-        const pos = screenToWorld(
-            e.clientX - rect.left,
-            e.clientY - rect.top
-        )
-
+    function paintAt(pos) {
         const { tool, snapping } = getState()
 
         const x = snapping
@@ -43,22 +33,89 @@ export function initDrawing(canvas, getState) {
         if (!action) return
 
         applyAction(action)
-        brushActions.push(action)
+        actions.push(action)
     }
 
-    // ✅ ТОЛЬКО button === 0
+    return {
+        begin(ctx) {
+            painted.clear()
+            actions.length = 0
+            paintAt(ctx.world)
+        },
+
+        move(ctx) {
+            paintAt(ctx.world)
+        },
+
+        end(ctx) {
+            if (!actions.length) return
+
+            const brush = {
+                type: ACTION.BRUSH,
+                actions: [...actions]
+            }
+
+            push(brush)
+
+            if (ctx.ready && getStatus() === 'online') {
+                send({
+                    type: WS.ACTION,
+                    action: brush
+                })
+            }
+        }
+    }
+}
+
+/**
+ * ===== DRAWING CONTROLLER =====
+ */
+
+export function initDrawing(canvas, getState) {
+    let ready = false
+    let myId = null
+    let activeTool = null
+    let drawing = false
+
+    const brushTool = createBrushTool(getState)
+
+    function setReady(v) {
+        ready = v
+    }
+
+    function setMyId(id) {
+        myId = id
+    }
+
+    function getContext(e) {
+        const rect = canvas.getBoundingClientRect()
+        const world = screenToWorld(
+            e.clientX - rect.left,
+            e.clientY - rect.top
+        )
+
+        return {
+            event: e,
+            world,
+            ready,
+            myId
+        }
+    }
+
+    // ===== INPUT =====
+
     canvas.addEventListener('mousedown', e => {
-        console.log('[DRAWING] mousedown', e.button)
         if (e.button !== 0) return
 
-        isDrawing = true
-        brushActions = []
-        painted.clear()
-        paint(e)
+        drawing = true
+        activeTool = brushTool
+        activeTool.begin(getContext(e))
     })
 
     canvas.addEventListener('mousemove', e => {
-        if (isDrawing) paint(e)
+        if (drawing && activeTool) {
+            activeTool.move(getContext(e))
+        }
 
         if (myId && getStatus() === 'online') {
             const r = canvas.getBoundingClientRect()
@@ -71,22 +128,11 @@ export function initDrawing(canvas, getState) {
     })
 
     window.addEventListener('mouseup', () => {
-        if (!isDrawing) return
-        isDrawing = false
+        if (!drawing || !activeTool) return
 
-        if (!brushActions.length) return
-
-        if (ready && getStatus() === 'online') {
-            const brush = {
-                type: ACTION.BRUSH,
-                actions: brushActions
-            }
-            push(brush)
-            send({
-                type: WS.ACTION,
-                action: brush
-            })
-        }
+        drawing = false
+        activeTool.end({ ready })
+        activeTool = null
     })
 
     return { setReady, setMyId }
