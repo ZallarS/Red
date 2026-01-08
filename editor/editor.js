@@ -4,28 +4,32 @@ import { render } from './render.js'
 import { drawGrid } from './grid.js'
 import { camera } from './camera.js'
 import { loadMap } from './map.js'
+
 import { initUI } from './ui/ui.js'
 import { subscribe, getState } from './ui/store.js'
+
 import { connect, on } from './ws.js'
 import { WS } from './protocol.js'
 
 import { createDebugOverlay } from './debug.js'
-import { renderUsers } from './usersView.js'
 import { initDrawing } from './drawing.js'
 import { applyAction } from './actions.js'
 
+// 🔽 НОВОЕ: API панели пользователей
+import { setUsers } from './ui/modules/usersPanel.js'
+
 const users = new Map()
-const cursors = new Map()        // ✅ КУРСОРЫ
-const softLocks = new Map()      // ✅ SOFT-LOCK ЗОНЫ
+const cursors = new Map()        // курсоры пользователей
+const softLocks = new Map()      // soft-lock зоны рисования
 
 const SOFT_LOCK_RADIUS = 48
 const SOFT_LOCK_TTL = 500
 
-let usersEl, barEl
+let barEl
 let serverStats = null
 
 let uiState = getState()
-subscribe(s => uiState = s)
+subscribe(s => (uiState = s))
 
 const CAMERA_KEY = 'editor-camera'
 
@@ -47,10 +51,10 @@ window.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('canvas')
     const ctx = canvas.getContext('2d')
 
-    usersEl = document.getElementById('users')
     barEl = document.getElementById('autosave-bar')
 
-    initUI(usersEl)
+    // ✅ UI теперь полностью модульный
+    initUI()
     restoreCamera()
 
     canvas.width = window.innerWidth
@@ -77,9 +81,9 @@ window.addEventListener('DOMContentLoaded', () => {
             case WS.USERS:
                 users.clear()
                 msg.users.forEach(u => users.set(u.id, u))
-                if (uiState.panels.users) {
-                    renderUsers(users, usersEl)
-                }
+
+                // ✅ передаём пользователей в модуль панели
+                setUsers(new Map(users))
                 break
 
             case WS.ACTION:
@@ -138,7 +142,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }, 250)
 
     function loop() {
-        render(ctx, canvas, cursors, softLocks) // ✅ передаём softLocks
+        render(ctx, canvas, cursors, softLocks)
         if (uiState.grid) drawGrid(ctx, canvas)
 
         debug.update(serverStats, uiState, users.size)

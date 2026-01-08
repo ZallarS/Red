@@ -4,8 +4,16 @@ const state = {
     tool: 'draw',
     grid: true,
     snapping: true,
+
     panels: {
-        users: true
+        left: {
+            open: true,
+            active: 'tools'
+        },
+        right: {
+            open: true,
+            active: 'users'
+        }
     }
 }
 
@@ -15,9 +23,13 @@ export function getState() {
 
 export function setState(patch) {
     if (patch.panels) {
-        state.panels = { ...state.panels, ...patch.panels }
+        state.panels = {
+            ...state.panels,
+            ...patch.panels
+        }
         delete patch.panels
     }
+
     Object.assign(state, patch)
     listeners.forEach(fn => fn(state))
 }
