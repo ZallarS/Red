@@ -19,11 +19,11 @@ function createBrushTool(getState) {
         const { tool, snapping } = getState()
 
         const x = snapping
-            ? Math.floor(pos.x / TILE_SIZE)
+            ? Math.floor((pos.x + TILE_SIZE / 2) / TILE_SIZE)
             : Math.round(pos.x / TILE_SIZE)
 
         const y = snapping
-            ? Math.floor(pos.y / TILE_SIZE)
+            ? Math.floor((pos.y + TILE_SIZE / 2) / TILE_SIZE)
             : Math.round(pos.y / TILE_SIZE)
 
         const key = `${x},${y}`
@@ -77,7 +77,7 @@ export function initDrawing(canvas, getState) {
     let ready = false
     let myId = null
     let activeTool = null
-    let drawing = false   // ← уже есть, используем как painting
+    let drawing = false
 
     const brushTool = createBrushTool(getState)
 
@@ -98,7 +98,7 @@ export function initDrawing(canvas, getState) {
             type: WS.CURSOR,
             x: e.clientX - r.left,
             y: e.clientY - r.top,
-            painting: drawing   // ✅ ВАЖНО
+            painting: drawing
         })
     }
 
@@ -120,13 +120,12 @@ export function initDrawing(canvas, getState) {
     // ===== INPUT =====
 
     canvas.addEventListener('mousedown', e => {
-        if (e.button !== 0) return
+        if (e.button !== 0 || e.ctrlKey) return
 
         drawing = true
         activeTool = brushTool
         activeTool.begin(getContext(e))
 
-        // ✅ сразу сообщаем, что начали рисовать
         sendCursor(e)
     })
 
@@ -135,7 +134,6 @@ export function initDrawing(canvas, getState) {
             activeTool.move(getContext(e))
         }
 
-        // ✅ курсор всегда шлётся, но с флагом painting
         sendCursor(e)
     })
 
@@ -146,7 +144,6 @@ export function initDrawing(canvas, getState) {
         activeTool.end({ ready })
         activeTool = null
 
-        // ✅ сообщаем, что рисование закончилось
         sendCursor(e)
     })
 

@@ -3,14 +3,9 @@
 import { TILE_SIZE } from './map.js'
 import { camera } from './camera.js'
 
-// ===== GRID CACHE =====
-let gridCanvas = null
-let gridCtx = null
-let lastZoom = null
-
 // ===== FADE CONFIG =====
 const FADE_START = 1.0   // zoom, где grid полностью видим
-const FADE_END = 0.5     // zoom, где grid полностью исчезает
+const FADE_END = 0.5    // zoom, где grid полностью исчезает
 
 function smoothstep(t) {
     return t * t * (3 - 2 * t)
@@ -24,60 +19,49 @@ function getGridAlpha(zoom) {
     return smoothstep(t)
 }
 
-function rebuildGrid(canvas) {
-    const zoom = camera.zoom
-
-    gridCanvas = document.createElement('canvas')
-    gridCanvas.width = canvas.width
-    gridCanvas.height = canvas.height
-    gridCtx = gridCanvas.getContext('2d')
-
-    gridCtx.clearRect(0, 0, gridCanvas.width, gridCanvas.height)
-
-    gridCtx.strokeStyle = '#222'
-    gridCtx.lineWidth = 1
-
-    const step = TILE_SIZE * zoom
-    if (step < 4) return
-
-    const offsetX = (-camera.x * zoom) % step
-    const offsetY = (-camera.y * zoom) % step
-
-    gridCtx.beginPath()
-
-    // vertical lines
-    for (let x = offsetX; x < gridCanvas.width; x += step) {
-        gridCtx.moveTo(x, 0)
-        gridCtx.lineTo(x, gridCanvas.height)
-    }
-
-    // horizontal lines
-    for (let y = offsetY; y < gridCanvas.height; y += step) {
-        gridCtx.moveTo(0, y)
-        gridCtx.lineTo(gridCanvas.width, y)
-    }
-
-    gridCtx.stroke()
-}
-
 export function drawGrid(ctx, canvas) {
     const zoom = camera.zoom
     const alpha = getGridAlpha(zoom)
 
-    // grid полностью скрыт
     if (alpha <= 0) return
 
-    // пересобираем ТОЛЬКО при изменении zoom
-    if (!gridCanvas || lastZoom !== zoom) {
-        lastZoom = zoom
-        rebuildGrid(canvas)
+    // ===== WORLD SPACE =====
+    ctx.setTransform(
+        zoom,
+        0,
+        0,
+        zoom,
+        -camera.x * zoom,
+        -camera.y * zoom
+    )
+
+    ctx.globalAlpha = alpha
+    ctx.strokeStyle = '#222'
+    ctx.lineWidth = 1 / zoom   // ❗ чтобы толщина не менялась при zoom
+
+    const startX = Math.floor(camera.x / TILE_SIZE) * TILE_SIZE
+    const startY = Math.floor(camera.y / TILE_SIZE) * TILE_SIZE
+
+    const endX = camera.x + canvas.width / zoom
+    const endY = camera.y + canvas.height / zoom
+
+    ctx.beginPath()
+
+    // vertical lines
+    for (let x = startX; x <= endX; x += TILE_SIZE) {
+        ctx.moveTo(x, startY)
+        ctx.lineTo(x, endY)
     }
 
-    if (!gridCanvas) return
+    // horizontal lines
+    for (let y = startY; y <= endY; y += TILE_SIZE) {
+        ctx.moveTo(startX, y)
+        ctx.lineTo(endX, y)
+    }
 
-    // overlay
-    ctx.setTransform(1, 0, 0, 1, 0, 0)
-    ctx.globalAlpha = alpha
-    ctx.drawImage(gridCanvas, 0, 0)
+    ctx.stroke()
+
+    // ===== RESET =====
     ctx.globalAlpha = 1
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
 }
