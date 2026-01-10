@@ -36,8 +36,12 @@ export function render(ctx, canvas, cursors = new Map(), softLocks = new Map()) 
         const chunks = getVisibleChunks(camera, canvas)
         for (const chunk of chunks) {
             redrawChunkLOD(chunk, lod)
+
+            const entry = chunk.canvases.get(lod)
+            if (!entry) continue
+
             ctx.drawImage(
-                chunk.canvases.get(lod).canvas,
+                entry.canvas,
                 chunk.cx * CHUNK_SIZE * TILE_SIZE,
                 chunk.cy * CHUNK_SIZE * TILE_SIZE
             )

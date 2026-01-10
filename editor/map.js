@@ -13,7 +13,11 @@ export const LOD_LEVELS = {
 const tiles = new Map()
 
 // ===== CHUNKS =====
-// key → { cx, cy, dirty, canvases: Map<lod, { canvas, ctx }> }
+// key → {
+//   cx, cy,
+//   canvases: Map<lod, { canvas, ctx }>,
+//   dirtyLOD: Set<lod>
+// }
 const chunks = new Map()
 
 function tileKey(x, y) {
@@ -42,18 +46,26 @@ function getChunk(cx, cy) {
         c = {
             cx,
             cy,
-            dirty: true,
-            canvases: new Map()
+            canvases: new Map(),
+            dirtyLOD: new Set([
+                LOD_LEVELS.FULL,
+                LOD_LEVELS.SIMPLE,
+                LOD_LEVELS.DOT
+            ])
         }
         chunks.set(key, c)
     }
     return c
 }
 
-function markChunkDirty(x, y) {
+function markChunkDirtyAllLOD(x, y) {
     const cx = Math.floor(x / CHUNK_SIZE)
     const cy = Math.floor(y / CHUNK_SIZE)
-    getChunk(cx, cy).dirty = true
+    const chunk = getChunk(cx, cy)
+
+    chunk.dirtyLOD.add(LOD_LEVELS.FULL)
+    chunk.dirtyLOD.add(LOD_LEVELS.SIMPLE)
+    chunk.dirtyLOD.add(LOD_LEVELS.DOT)
 }
 
 // ===== PUBLIC API =====
@@ -77,7 +89,7 @@ export function setTile(x, y, value) {
     if (value) tiles.set(key, value)
     else tiles.delete(key)
 
-    markChunkDirty(x, y)
+    markChunkDirtyAllLOD(x, y)
 }
 
 export function clearMap() {
@@ -111,13 +123,13 @@ export function getVisibleChunks(camera, canvas) {
 // ===== CHUNK REDRAW =====
 
 export function redrawChunkLOD(chunk, lod) {
+    if (!chunk.dirtyLOD.has(lod)) return
+
     let entry = chunk.canvases.get(lod)
     if (!entry) {
         entry = createLODCanvas()
         chunk.canvases.set(lod, entry)
     }
-
-    if (!chunk.dirty) return
 
     const { ctx } = entry
     ctx.clearRect(0, 0, entry.canvas.width, entry.canvas.height)
@@ -156,5 +168,5 @@ export function redrawChunkLOD(chunk, lod) {
         }
     }
 
-    chunk.dirty = false
+    chunk.dirtyLOD.delete(lod)
 }
