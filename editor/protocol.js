@@ -26,7 +26,10 @@ export const WS = {
     // ===== PING =====
     PING: 'ping',
     PONG: 'pong',
-    LATENCY: 'latency'
+    LATENCY: 'latency',
+
+    // ===== ROLES (NEW) =====
+    ROLE_SET: 'role-set'
 }
 
 export const ACTION = {

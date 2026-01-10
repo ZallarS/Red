@@ -1,7 +1,12 @@
 // editor/actions.js
 
 import { getTile, setTile } from './map.js'
-import { ACTION } from './protocol.js'
+import { ACTION, WS } from './protocol.js'
+import { send } from './ws.js'
+
+/* ============================================================
+   ===============  MAP / DRAW ACTIONS (OLD) ==================
+   ============================================================ */
 
 export function createSetTileAction(x, y, tile) {
     const before = getTile(x, y)
@@ -46,4 +51,21 @@ export function revertAction(action) {
             setTile(action.x, action.y, action.before)
             break
     }
+}
+
+/* ============================================================
+   ===================  USER / ROLE ACTIONS  ==================
+   ============================================================ */
+
+/**
+ * Отправка запроса на смену роли пользователя
+ * Вызывается ТОЛЬКО из UI (usersPanel)
+ * Реальная проверка прав — на сервере
+ */
+export function setUserRole(targetUserId, role) {
+    send({
+        type: WS.ROLE_SET,
+        targetUserId,
+        role
+    })
 }

@@ -6,7 +6,7 @@ import { camera } from './camera.js'
 import { loadMap } from './map.js'
 
 import { initUI } from './ui/ui.js'
-import { subscribe, getState } from './ui/store.js'
+import { subscribe, getState, setState } from './ui/store.js'
 
 import { on } from './ws.js'
 import { WS } from './protocol.js'
@@ -62,7 +62,10 @@ export function initEditor(snapshot) {
 
     // ===== UI =====
     initUI({ role })
-
+    setState({
+        role,
+        userId: snapshot.userId   // если есть
+    })
     // ===== DEBUG =====
     const debug = createDebugOverlay()
     debug.init()

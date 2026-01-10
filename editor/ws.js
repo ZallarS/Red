@@ -21,16 +21,17 @@ function emit(type, payload) {
 
 /**
  * ===============================
- * SESSION
+ * USER ID (PERSISTENT)
  * ===============================
  */
 
-const SESSION_KEY = 'editor-session-id'
-let sessionId = localStorage.getItem(SESSION_KEY)
+const USER_ID_KEY = 'editor-user-id'
 
-function saveSession(id) {
-    sessionId = id
-    localStorage.setItem(SESSION_KEY, id)
+let userId = localStorage.getItem(USER_ID_KEY)
+
+if (!userId) {
+    userId = crypto.randomUUID()
+    localStorage.setItem(USER_ID_KEY, userId)
 }
 
 /**
@@ -98,9 +99,10 @@ export function connect() {
         retries = 0
         setStatus('online')
 
+        // ✅ ОТПРАВЛЯЕМ userId, А НЕ sessionId
         send({
             type: WS.AUTH,
-            sessionId
+            userId
         })
 
         startPing()
@@ -124,11 +126,6 @@ export function connect() {
                 ping
             })
             return
-        }
-
-        // ===== HELLO =====
-        if (msg.type === WS.HELLO && msg.sessionId) {
-            saveSession(msg.sessionId)
         }
 
         emit('message', msg)

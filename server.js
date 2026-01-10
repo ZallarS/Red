@@ -20,11 +20,10 @@ if (!fs.existsSync(MAPS_DIR)) {
 
 // ===================== ROOMS =====================
 const rooms = new Map()
-// roomId -> room (only active rooms in RAM)
 
-// ===================== SESSIONS =====================
-const sessions = new Map()
-// sessionId -> { name, color }
+// ===================== USERS (GLOBAL, PERSISTENT) =====================
+// userId -> { id, name, color }
+const users = new Map()
 
 function colorFromId(id) {
     let hash = 0
@@ -50,25 +49,16 @@ function listRoomIds() {
 }
 
 function loadRoom(roomId) {
-    if (rooms.has(roomId)) {
-        return rooms.get(roomId)
-    }
+    if (rooms.has(roomId)) return rooms.get(roomId)
+    if (!roomExists(roomId)) return null
 
-    if (!roomExists(roomId)) {
-        return null
-    }
-
-    const map = new Map()
-    const data = JSON.parse(fs.readFileSync(roomFile(roomId), 'utf8'))
-    for (const [k, v] of Object.entries(data)) {
-        map.set(k, v)
-    }
+    const raw = JSON.parse(fs.readFileSync(roomFile(roomId), 'utf8'))
 
     const room = {
         id: roomId,
-        ownerId: null,
-        users: new Map(),
-        map,
+        map: new Map(Object.entries(raw.map || {})),
+        roles: new Map(Object.entries(raw.roles || {})), // userId -> role
+        users: new Map(), // ws -> userId (только активные)
         autosaveTimer: null
     }
 
@@ -79,7 +69,10 @@ function loadRoom(roomId) {
 function saveRoom(room) {
     fs.writeFileSync(
         roomFile(room.id),
-        JSON.stringify(Object.fromEntries(room.map), null, 2)
+        JSON.stringify({
+            map: Object.fromEntries(room.map),
+            roles: Object.fromEntries(room.roles)
+        }, null, 2)
     )
 }
 
@@ -96,12 +89,15 @@ function broadcastRoom(room, msg, except = null) {
 function broadcastRoomUsers(room) {
     broadcastRoom(room, {
         type: 'room-users',
-        users: [...room.users.values()].map(u => ({
-            id: u.id,
-            name: u.name,
-            color: u.color,
-            role: room.ownerId === u.id ? 'admin' : 'viewer'
-        }))
+        users: [...room.roles.entries()].map(([userId, role]) => {
+            const u = users.get(userId)
+            return {
+                id: userId,
+                name: u?.name || 'Unknown',
+                color: u?.color || '#888',
+                role
+            }
+        })
     })
 }
 
@@ -118,10 +114,12 @@ function scheduleAutosave(room) {
 
 function applyRoomAction(room, action) {
     if (!action) return
+
     if (action.type === 'brush') {
         action.actions.forEach(a => applyRoomAction(room, a))
         return
     }
+
     if (action.type === 'setTile') {
         const key = `${action.x},${action.y}`
         if (action.after === 0) room.map.delete(key)
@@ -129,11 +127,17 @@ function applyRoomAction(room, action) {
     }
 }
 
+// ===================== ROLES =====================
+const VALID_ROLES = new Set(['admin', 'editor', 'viewer'])
+
+function isAdmin(room, userId) {
+    return room.roles.get(userId) === 'admin'
+}
+
 // ===================== WS =====================
 wss.on('connection', ws => {
 
-    let sessionId = null
-    let user = null
+    let userId = null
     let room = null
 
     ws.on('message', raw => {
@@ -142,31 +146,35 @@ wss.on('connection', ws => {
 
         // ===== AUTH =====
         if (msg.type === 'auth') {
-            sessionId = String(msg.sessionId || '')
-            if (!sessions.has(sessionId)) {
-                sessionId = crypto.randomUUID()
-                sessions.set(sessionId, {
-                    name: `User-${sessionId.slice(0, 4)}`,
-                    color: colorFromId(sessionId)
+            userId = String(msg.userId || '').trim()
+
+            // ❗ НЕ создаём новый userId без причины
+            if (!userId) {
+                userId = crypto.randomUUID()
+            }
+
+            if (!users.has(userId)) {
+                users.set(userId, {
+                    id: userId,
+                    name: `User-${userId.slice(0, 4)}`,
+                    color: colorFromId(userId)
                 })
             }
 
             ws.send(JSON.stringify({
                 type: 'auth-ok',
-                sessionId
+                userId
             }))
             return
         }
 
-        if (!sessionId) return
+        if (!userId) return
 
         // ===== ROOM LIST =====
         if (msg.type === 'room-list') {
-            const ids = listRoomIds()
-
             ws.send(JSON.stringify({
                 type: 'room-list-response',
-                rooms: ids.map(id => ({
+                rooms: listRoomIds().map(id => ({
                     id,
                     users: rooms.get(id)?.users.size || 0
                 }))
@@ -180,9 +188,9 @@ wss.on('connection', ws => {
 
             const room = {
                 id: roomId,
-                ownerId: null,
-                users: new Map(),
                 map: new Map(),
+                roles: new Map([[userId, 'admin']]),
+                users: new Map(),
                 autosaveTimer: null
             }
 
@@ -209,25 +217,17 @@ wss.on('connection', ws => {
                 return
             }
 
-            const s = sessions.get(sessionId)
-            const id = sessionId.slice(0, 6)
-
-            user = {
-                id,
-                name: s.name,
-                color: s.color
+            if (!room.roles.has(userId)) {
+                room.roles.set(userId, 'viewer')
+                saveRoom(room)
             }
 
-            room.users.set(ws, user)
-
-            if (!room.ownerId) {
-                room.ownerId = user.id
-            }
+            room.users.set(ws, userId)
 
             ws.send(JSON.stringify({
                 type: 'room-snapshot',
                 roomId,
-                role: room.ownerId === user.id ? 'admin' : 'viewer',
+                role: room.roles.get(userId),
                 map: Object.fromEntries(room.map)
             }))
 
@@ -235,15 +235,39 @@ wss.on('connection', ws => {
             return
         }
 
-        if (!room || !user) return
+        if (!room) return
+
+        // ===== ROLE SET =====
+        if (msg.type === 'role-set') {
+            const { targetUserId, role } = msg
+
+            if (!isAdmin(room, userId)) return
+            if (!VALID_ROLES.has(role)) return
+            if (!room.roles.has(targetUserId)) return
+
+            // защита от снятия последнего админа
+            if (
+                role !== 'admin' &&
+                room.roles.get(targetUserId) === 'admin'
+            ) {
+                const admins = [...room.roles.values()].filter(r => r === 'admin')
+                if (admins.length <= 1) return
+            }
+
+            room.roles.set(targetUserId, role)
+            saveRoom(room)
+            broadcastRoomUsers(room)
+            return
+        }
 
         // ===== CURSOR =====
         if (msg.type === 'cursor') {
+            const u = users.get(userId)
             broadcastRoom(room, {
                 type: 'cursor',
-                id: user.id,
-                name: user.name,
-                color: user.color,
+                id: userId,
+                name: u.name,
+                color: u.color,
                 x: msg.x,
                 y: msg.y,
                 painting: !!msg.painting,
@@ -254,7 +278,9 @@ wss.on('connection', ws => {
 
         // ===== ACTION =====
         if (msg.type === 'action') {
-            if (room.ownerId !== user.id) return
+            const role = room.roles.get(userId)
+            if (role !== 'admin' && role !== 'editor') return
+
             applyRoomAction(room, msg.action)
             scheduleAutosave(room)
             broadcastRoom(room, { type: 'action', action: msg.action }, ws)
@@ -263,7 +289,7 @@ wss.on('connection', ws => {
 
         // ===== SAVE =====
         if (msg.type === 'save') {
-            if (room.ownerId !== user.id) return
+            if (!isAdmin(room, userId)) return
             saveRoom(room)
             broadcastRoom(room, { type: 'saved', mode: 'manual' })
             return
@@ -271,29 +297,15 @@ wss.on('connection', ws => {
     })
 
     ws.on('close', () => {
-        if (!room || !user) return
-
+        if (!room) return
         room.users.delete(ws)
-
-        if (room.ownerId === user.id) {
-            const next = room.users.values().next().value
-            room.ownerId = next ? next.id : null
-        }
-
-        if (room.users.size === 0) {
-            rooms.delete(room.id)
-        } else {
-            broadcastRoomUsers(room)
-        }
+        broadcastRoomUsers(room)
     })
 })
 
 // ===================== STATIC + SPA =====================
-
-// раздаём ВСЮ директорию проекта
 app.use(express.static(__dirname))
 
-// SPA fallback (Express 5 compatible)
 app.get(/.*/, (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'))
 })

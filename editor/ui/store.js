@@ -5,6 +5,10 @@ const state = {
     grid: true,
     snapping: true,
 
+    users: [],        // ✅ ДОБАВЛЕНО
+    userId: null,     // ✅ ДОБАВЛЕНО
+    role: 'viewer',   // ✅ ДОБАВЛЕНО
+
     panels: {
         left: {
             open: true,
