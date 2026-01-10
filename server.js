@@ -22,7 +22,6 @@ if (!fs.existsSync(MAPS_DIR)) {
 const rooms = new Map()
 
 // ===================== USERS (GLOBAL, PERSISTENT) =====================
-// userId -> { id, name, color }
 const users = new Map()
 
 function colorFromId(id) {
@@ -57,8 +56,8 @@ function loadRoom(roomId) {
     const room = {
         id: roomId,
         map: new Map(Object.entries(raw.map || {})),
-        roles: new Map(Object.entries(raw.roles || {})), // userId -> role
-        users: new Map(), // ws -> userId (только активные)
+        roles: new Map(Object.entries(raw.roles || {})),
+        users: new Map(),
         autosaveTimer: null
     }
 
@@ -148,7 +147,6 @@ wss.on('connection', ws => {
         if (msg.type === 'auth') {
             userId = String(msg.userId || '').trim()
 
-            // ❗ НЕ создаём новый userId без причины
             if (!userId) {
                 userId = crypto.randomUUID()
             }
@@ -245,7 +243,12 @@ wss.on('connection', ws => {
             if (!VALID_ROLES.has(role)) return
             if (!room.roles.has(targetUserId)) return
 
-            // защита от снятия последнего админа
+            // 🛡️ ЗАПРЕТ САМОПОНИЖЕНИЯ АДМИНА
+            if (targetUserId === userId && role !== 'admin') {
+                return
+            }
+
+            // 🛡️ защита от снятия последнего админа
             if (
                 role !== 'admin' &&
                 room.roles.get(targetUserId) === 'admin'

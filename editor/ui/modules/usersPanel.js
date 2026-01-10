@@ -1,3 +1,5 @@
+// ui/modules/usersPanel.js
+
 import { getState, setState, subscribe } from '../store.js'
 import { registerPanelModule } from '../panels/panelRegistry.js'
 import { setUserRole } from '../../actions.js'
@@ -7,9 +9,11 @@ export function setUsers(users) {
     if (!users) return
 
     const list =
-        users instanceof Map ? [...users.values()] :
-            Array.isArray(users) ? users :
-                []
+        users instanceof Map
+            ? [...users.values()]
+            : Array.isArray(users)
+                ? users
+                : []
 
     setState({ users: list })
 }
@@ -25,11 +29,16 @@ registerPanelModule('users', {
         listEl.className = 'users-list'
         container.appendChild(listEl)
 
+        let lastRole = null
+
         function renderUsers() {
             const state = getState()
             const users = state.users || []
             const myId = state.userId
             const myRole = state.role
+
+            // 🔥 если роль не изменилась и список тот же — всё равно рендерим
+            lastRole = myRole
 
             listEl.innerHTML = ''
 
@@ -51,11 +60,11 @@ registerPanelModule('users', {
 
                 info.append(color, name)
 
-                // ===== ROLE =====
+                // ===== ROLE CELL =====
                 const roleCell = document.createElement('div')
                 roleCell.className = 'user-role'
 
-                // Админ может менять роли других пользователей
+                // 👑 СЕЛЕКТОР — ТОЛЬКО ЕСЛИ МЫ АДМИН
                 if (myRole === 'admin' && user.id !== myId) {
                     const select = document.createElement('select')
 
@@ -81,12 +90,17 @@ registerPanelModule('users', {
             })
         }
 
+        // первичный рендер
         renderUsers()
-        subscribe(renderUsers)
+
+        // 🔥 РЕАКЦИЯ НА ЛЮБОЕ ИЗМЕНЕНИЕ STATE
+        subscribe(() => {
+            renderUsers()
+        })
     }
 })
 
-// 🔥 Гарантируем активацию панели users
+// 🔥 Гарантируем, что панель users активна
 setState({
     panels: {
         right: {

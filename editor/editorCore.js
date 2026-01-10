@@ -14,14 +14,14 @@ import { WS } from './protocol.js'
 import { createDebugOverlay } from './debug.js'
 import { initDrawing } from './drawing.js'
 import { applyAction } from './actions.js'
-import { initInput } from './input.js' // ✅ ДОБАВЛЕНО
+import { initInput } from './input.js'
 
 import { setUsers } from './ui/modules/usersPanel.js'
 
 const CAMERA_KEY_PREFIX = 'editor-camera-room-'
 
 export function initEditor(snapshot) {
-    const { roomId, role, map } = snapshot
+    const { roomId, role, map, userId } = snapshot
 
     const users = new Map()
     const cursors = new Map()
@@ -57,15 +57,16 @@ export function initEditor(snapshot) {
 
     restoreCamera()
 
-    // ✅ ПОДКЛЮЧЕНИЕ INPUT
+    // ===== INPUT =====
     initInput(canvas)
 
     // ===== UI =====
     initUI({ role })
     setState({
         role,
-        userId: snapshot.userId   // если есть
+        userId
     })
+
     // ===== DEBUG =====
     const debug = createDebugOverlay()
     debug.init()
@@ -80,17 +81,44 @@ export function initEditor(snapshot) {
     // ===== WS EVENTS =====
     on('message', msg => {
         switch (msg.type) {
-            case 'room-users':
+
+            /**
+             * =====================================================
+             * USERS / ROLES (🔥 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ)
+             * =====================================================
+             */
+            case 'room-users': {
                 users.clear()
                 msg.users.forEach(u => users.set(u.id, u))
-                setUsers(new Map(users))
-                break
 
+                // обновляем список пользователей в UI
+                setUsers(new Map(users))
+
+                // 🔑 ЕСЛИ ЭТО МЫ — ОБНОВЛЯЕМ РОЛЬ МГНОВЕННО
+                const state = getState()
+                const me = msg.users.find(u => u.id === state.userId)
+
+                if (me && me.role !== state.role) {
+                    setState({ role: me.role })
+                }
+                break
+            }
+
+            /**
+             * =====================================================
+             * ACTIONS
+             * =====================================================
+             */
             case WS.ACTION:
             case 'action':
                 applyAction(msg.action)
                 break
 
+            /**
+             * =====================================================
+             * CURSOR
+             * =====================================================
+             */
             case WS.CURSOR:
             case 'cursor':
                 cursors.set(msg.id, {
