@@ -120,7 +120,7 @@ export function getVisibleChunks(camera, canvas) {
     return result
 }
 
-// ===== CHUNK REDRAW =====
+// ===== CHUNK REDRAW (FIXED GEOMETRY FOR ALL LODs) =====
 
 export function redrawChunkLOD(chunk, lod) {
     if (!chunk.dirtyLOD.has(lod)) return
@@ -131,9 +131,8 @@ export function redrawChunkLOD(chunk, lod) {
         chunk.canvases.set(lod, entry)
     }
 
-    const { ctx } = entry
-    ctx.clearRect(0, 0, entry.canvas.width, entry.canvas.height)
-    ctx.fillStyle = '#444'
+    const { ctx, canvas } = entry
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
 
     const baseX = chunk.cx * CHUNK_SIZE
     const baseY = chunk.cy * CHUNK_SIZE
@@ -143,27 +142,22 @@ export function redrawChunkLOD(chunk, lod) {
             const tile = getTile(baseX + x, baseY + y)
             if (!tile) continue
 
+            const px = x * TILE_SIZE
+            const py = y * TILE_SIZE
+
             if (lod === LOD_LEVELS.FULL) {
-                ctx.fillRect(
-                    x * TILE_SIZE,
-                    y * TILE_SIZE,
-                    TILE_SIZE,
-                    TILE_SIZE
-                )
-            } else if (lod === LOD_LEVELS.SIMPLE) {
-                ctx.fillRect(
-                    x * TILE_SIZE + 8,
-                    y * TILE_SIZE + 8,
-                    TILE_SIZE - 16,
-                    TILE_SIZE - 16
-                )
-            } else if (lod === LOD_LEVELS.DOT) {
-                ctx.fillRect(
-                    x * TILE_SIZE + TILE_SIZE / 2 - 1,
-                    y * TILE_SIZE + TILE_SIZE / 2 - 1,
-                    2,
-                    2
-                )
+                ctx.fillStyle = '#444'
+                ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE)
+            }
+
+            else if (lod === LOD_LEVELS.SIMPLE) {
+                ctx.fillStyle = 'rgba(68,68,68,0.6)'
+                ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE)
+            }
+
+            else if (lod === LOD_LEVELS.DOT) {
+                ctx.fillStyle = 'rgba(68,68,68,0.25)'
+                ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE)
             }
         }
     }

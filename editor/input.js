@@ -1,72 +1,59 @@
-import { camera } from './camera.js'
+// editor/input.js
 
-let dragging = false
+import { camera, setZoom } from './camera.js'
+
+let isPanning = false
 let lastX = 0
 let lastY = 0
 
-let spacePressed = false
-let ctrlPressed = false
-
 export function initInput(canvas) {
-
-    // ===== KEYS =====
-    window.addEventListener('keydown', e => {
-        if (e.code === 'Space') spacePressed = true
-        if (e.key === 'Control') ctrlPressed = true
-    })
-
-    window.addEventListener('keyup', e => {
-        if (e.code === 'Space') spacePressed = false
-        if (e.key === 'Control') ctrlPressed = false
-    })
-
     // ===== MOUSE DOWN =====
     canvas.addEventListener('mousedown', e => {
-        // ТОЛЬКО:
-        // Space + LMB
-        // Ctrl + LMB
-        if (
-            e.button === 0 &&
-            (spacePressed || ctrlPressed)
-        ) {
-            dragging = true
+        if (e.button === 1 || (e.button === 0 && e.ctrlKey)) {
+            isPanning = true
             lastX = e.clientX
             lastY = e.clientY
-
             canvas.style.cursor = 'grabbing'
-            e.preventDefault()
         }
+    })
+
+    // ===== MOUSE MOVE =====
+    window.addEventListener('mousemove', e => {
+        if (!isPanning) return
+
+        const dx = e.clientX - lastX
+        const dy = e.clientY - lastY
+
+        lastX = e.clientX
+        lastY = e.clientY
+
+        camera.x -= dx / camera.zoom
+        camera.y -= dy / camera.zoom
     })
 
     // ===== MOUSE UP =====
     window.addEventListener('mouseup', () => {
-        if (!dragging) return
-        dragging = false
-        canvas.style.cursor = ''
+        if (!isPanning) return
+        isPanning = false
+        canvas.style.cursor = 'default'
     })
 
-    // ===== MOUSE MOVE =====
-    canvas.addEventListener('mousemove', e => {
-        // hover cursor
-        if (!dragging) {
-            if (spacePressed || ctrlPressed) {
-                canvas.style.cursor = 'grab'
-            } else {
-                canvas.style.cursor = ''
-            }
-            return
-        }
+    // ===== WHEEL ZOOM =====
+    canvas.addEventListener(
+        'wheel',
+        e => {
+            e.preventDefault()
 
-        camera.x -= (e.clientX - lastX) / camera.zoom
-        camera.y -= (e.clientY - lastY) / camera.zoom
+            const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9
 
-        lastX = e.clientX
-        lastY = e.clientY
-    })
+            const rect = canvas.getBoundingClientRect()
+            const mouseX = e.clientX - rect.left
+            const mouseY = e.clientY - rect.top
 
-    // ===== ZOOM =====
-    canvas.addEventListener('wheel', e => {
-        camera.zoom *= e.deltaY > 0 ? 0.9 : 1.1
-        camera.zoom = Math.min(Math.max(camera.zoom, 0.3), 4)
-    })
+            // ✅ ВАЖНО:
+            // зум меняется ТОЛЬКО через setZoom()
+            setZoom(camera.zoom * zoomFactor, mouseX, mouseY)
+        },
+        { passive: false }
+    )
 }
