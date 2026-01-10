@@ -9,11 +9,12 @@ import {
     redrawChunkLOD
 } from './map.js'
 
+// ===== LOD SELECTION =====
+// DOT — последний и бесконечный уровень
 function getLOD(zoom) {
     if (zoom >= 1.0) return LOD_LEVELS.FULL
     if (zoom >= 0.6) return LOD_LEVELS.SIMPLE
-    if (zoom >= 0.35) return LOD_LEVELS.DOT
-    return null
+    return LOD_LEVELS.DOT
 }
 
 export function render(ctx, canvas, cursors = new Map(), softLocks = new Map()) {
@@ -32,20 +33,19 @@ export function render(ctx, canvas, cursors = new Map(), softLocks = new Map()) 
     )
 
     const lod = getLOD(camera.zoom)
-    if (lod !== null) {
-        const chunks = getVisibleChunks(camera, canvas)
-        for (const chunk of chunks) {
-            redrawChunkLOD(chunk, lod)
 
-            const entry = chunk.canvases.get(lod)
-            if (!entry) continue
+    const chunks = getVisibleChunks(camera, canvas)
+    for (const chunk of chunks) {
+        redrawChunkLOD(chunk, lod)
 
-            ctx.drawImage(
-                entry.canvas,
-                chunk.cx * CHUNK_SIZE * TILE_SIZE,
-                chunk.cy * CHUNK_SIZE * TILE_SIZE
-            )
-        }
+        const entry = chunk.canvases.get(lod)
+        if (!entry) continue
+
+        ctx.drawImage(
+            entry.canvas,
+            chunk.cx * CHUNK_SIZE * TILE_SIZE,
+            chunk.cy * CHUNK_SIZE * TILE_SIZE
+        )
     }
 
     // ===== OVERLAY (SCREEN SPACE) =====
