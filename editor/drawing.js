@@ -85,7 +85,7 @@ export function initDrawing(canvas, getState) {
 
     function setMyId(id) {
         myId = id
-        console.log('Drawing: User ID set to:', id) // 🔥 ДЕБАГ
+        console.log('Рисование: ID пользователя установлено:', id)
     }
 
     function sendCursor(e) {

@@ -5,6 +5,42 @@ import { subscribe, getState } from './store.js'
 import './modules/toolsPanel.js'
 import './modules/usersPanel.js'
 
+function applyGlobalStyles() {
+    const styles = document.createElement('style')
+    styles.textContent = `
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        
+        button {
+            font-family: 'Inter', sans-serif;
+        }
+        
+        /* Стили скроллбара */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #1a1a1a;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #444;
+        }
+    `
+    document.head.appendChild(styles)
+}
+
 function applyRoleToUI(role) {
     const body = document.body
 
@@ -20,11 +56,14 @@ function applyRoleToUI(role) {
         body.classList.add('role-viewer')
     }
 
-    console.log(`🎭 UI role updated to: ${role}`)
+    console.log(`🎭 Роль пользовательского интерфейса обновлена для: ${role}`)
 }
 
 export function initUI() {
-    console.log('🔄 Initializing UI...')
+    console.log('🔄 Инициализация UI...')
+
+    // Применяем глобальные стили
+    applyGlobalStyles()
 
     // создаём контейнеры панелей
     createPanelContainer('left')
@@ -32,12 +71,12 @@ export function initUI() {
 
     // применяем роль сразу
     const initialState = getState()
-    console.log('📋 Initial state:', initialState)
+    console.log('📋 Первоначальное состояние :', initialState)
     applyRoleToUI(initialState.role)
 
     // 🔥 РЕАКТИВНО обновляем UI при смене роли
     subscribe(state => {
-        console.log('🔄 UI subscription triggered, role:', state.role)
+        console.log('🔄 Запуск подписки на UI, роль:', state.role)
         applyRoleToUI(state.role)
     })
 }

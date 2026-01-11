@@ -61,7 +61,7 @@ export function revertAction(action) {
  * Реальная проверка прав — на сервере
  */
 export function setUserRole(targetUserId, role) {
-    console.log(`📤 Requesting role change: ${targetUserId} -> ${role}`)
+    console.log(`📤 Запрос изменения на смену роли: ${targetUserId} -> ${role}`)
 
     send({
         type: WS.ROLE_SET,

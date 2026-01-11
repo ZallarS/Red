@@ -5,9 +5,9 @@ const state = {
     grid: true,
     snapping: true,
 
-    users: [],        // ✅ ДОБАВЛЕНО
-    userId: null,     // ✅ ДОБАВЛЕНО
-    role: 'viewer',   // ✅ ДОБАВЛЕНО
+    users: [],
+    userId: null,
+    role: 'viewer',
 
     panels: {
         left: {
@@ -42,7 +42,7 @@ export function setState(patch) {
 
     // 🔥 Логируем изменение роли
     if (patch.role !== undefined && patch.role !== oldRole) {
-        console.log('🎭 ROLE CHANGED:', {
+        console.log('🎭 Роль изменена:', {
             from: oldRole,
             to: patch.role,
             userId: state.userId
@@ -51,7 +51,7 @@ export function setState(patch) {
 
     // 🔥 Логируем изменение userId
     if (patch.userId !== undefined && patch.userId !== oldUserId) {
-        console.log('🆔 USER ID CHANGED:', {
+        console.log('🆔 ID пользователя изменено:', {
             from: oldUserId,
             to: patch.userId
         })
@@ -62,7 +62,7 @@ export function setState(patch) {
         try {
             fn(state)
         } catch (e) {
-            console.error('❌ Store listener error:', e)
+            console.error('❌ Ошибка прослушивания хранилища:', e)
         }
     })
 }

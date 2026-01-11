@@ -114,7 +114,7 @@ export function connect() {
         setStatus('online')
 
         // ✅ ОТПРАВЛЯЕМ userId, А НЕ sessionId
-        console.log('📤 Sending auth with userId:', userId)
+        console.log('📤 Отправка авторизации с идентификатором пользователя:', userId)
         send({
             type: WS.AUTH,
             userId
@@ -145,7 +145,7 @@ export function connect() {
 
         // 🔥 Логируем входящие сообщения для отладки
         if (msg.type === 'room-users') {
-            console.log('📥 Received room-users:', msg.users)
+            console.log('📥 Полученные пользователи комнаты:', msg.users)
         }
 
         emit('message', msg)
@@ -153,7 +153,7 @@ export function connect() {
 
     ws.onclose = () => {
         stopPing()
-        setStatus('reconnecting')
+        setStatus('Переподключение...')
 
         const timeout = Math.min(3000 + retries * 2000, 15000)
         retries++

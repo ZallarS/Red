@@ -101,8 +101,8 @@ export function initEditor(snapshot) {
 
                 // 🔥 Получаем текущий userId из store
                 const currentUserId = getState().userId
-                console.log('👤 Current user ID from store:', currentUserId)
-                console.log('🎭 Current role from store:', getState().role)
+                console.log('👤 Текущий ID пользователя из хранилища:', currentUserId)
+                console.log('🎭 Текущая роль в хранилище:', getState().role)
 
                 // Обновляем глобальный список пользователей
                 const newUsers = new Map()
@@ -116,7 +116,7 @@ export function initEditor(snapshot) {
                 // 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Находим СЕБЯ в списке и ОБНОВЛЯЕМ РОЛЬ
                 const meInList = msg.users.find(u => u.id === currentUserId)
                 if (meInList) {
-                    console.log('✅ Found myself in users list:', {
+                    console.log('✅ Нашел себя в списке пользователей:', {
                         myId: currentUserId,
                         myCurrentRole: getState().role,
                         myNewRole: meInList.role,
@@ -126,15 +126,15 @@ export function initEditor(snapshot) {
                     // 🔥 ВСЕГДА обновляем роль, даже если кажется, что она не изменилась
                     // Это нужно, потому что при входе в комнату мы можем получить устаревшую роль
                     if (meInList.role !== getState().role) {
-                        console.log(`🔄 My role changed from "${getState().role}" to "${meInList.role}"`)
+                        console.log(`🔄 Моя роль изменилась с "${getState().role}" на "${meInList.role}"`)
                         setState({ role: meInList.role })
                     } else {
-                        console.log(`⚡ My role is already "${meInList.role}", forcing UI update`)
+                        console.log(`⚡ Моя роль уже определена как "${meInList.role}", принудительное обновление UI`)
                         // 🔥 Даже если роль не изменилась, заставляем UI обновиться
                         setState({ role: meInList.role })
                     }
                 } else {
-                    console.error('❌ CRITICAL: Could not find myself in users list!', {
+                    console.error('❌ КРИТИЧНО: не удалось найти себя в списке пользователей!', {
                         myId: currentUserId,
                         users: msg.users.map(u => ({ id: u.id, role: u.role }))
                     })
@@ -185,7 +185,7 @@ export function initEditor(snapshot) {
              * =====================================================
              */
             case 'role-set-response':
-                console.log('✅ Role set response:', msg)
+                console.log('✅ Ответ на набор ролей:', msg)
                 break
         }
     })
