@@ -16,8 +16,19 @@ const state = {
         },
         right: {
             open: true,
-            active: 'users'
+            active: 'users' // Начальная вкладка - пользователи
         }
+    },
+
+    // 🔥 НОВОЕ: Хранилище событий
+    debug: {
+        events: [],
+        showEvents: false, // Теперь управляется через табы, а не отдельно
+        eventsFilter: 'all',
+        maxEvents: 50,
+        showPerformance: true,
+        showNetwork: true,
+        showSystem: true
     }
 }
 
@@ -31,9 +42,18 @@ export function setState(patch) {
     const oldUserId = state.userId
 
     if (patch.panels) {
-        state.panels = {
-            ...state.panels,
-            ...patch.panels
+        // Глубокое обновление panels
+        if (patch.panels.left) {
+            state.panels.left = {
+                ...state.panels.left,
+                ...patch.panels.left
+            }
+        }
+        if (patch.panels.right) {
+            state.panels.right = {
+                ...state.panels.right,
+                ...patch.panels.right
+            }
         }
         delete patch.panels
     }
@@ -47,6 +67,8 @@ export function setState(patch) {
             to: patch.role,
             userId: state.userId
         })
+        // Добавляем событие в лог
+        addEvent('system', `Роль пользователя ${state.userId?.substring(0, 8)} изменена с "${oldRole}" на "${patch.role}"`)
     }
 
     // 🔥 Логируем изменение userId
@@ -55,6 +77,7 @@ export function setState(patch) {
             from: oldUserId,
             to: patch.userId
         })
+        addEvent('system', `ID пользователя установлен: ${patch.userId?.substring(0, 8)}`)
     }
 
     // 🔥 Уведомляем всех слушателей
@@ -72,4 +95,62 @@ export function subscribe(fn) {
     // 🔥 Немедленно вызываем с текущим состоянием
     fn(state)
     return () => listeners.delete(fn)
+}
+
+// 🔥 НОВЫЕ ФУНКЦИИ ДЛЯ ЛОГИРОВАНИЯ СОБЫТИЙ
+let eventIdCounter = 0
+
+export function addEvent(category, message, data = null) {
+    const event = {
+        id: ++eventIdCounter,
+        timestamp: Date.now(),
+        category, // 'action', 'user', 'network', 'system', 'error'
+        message,
+        data
+    }
+
+    state.debug.events.unshift(event) // Добавляем в начало
+
+    // Ограничиваем количество событий
+    if (state.debug.events.length > state.debug.maxEvents) {
+        state.debug.events.pop()
+    }
+
+    // Автоматически показываем важные события в консоли
+    if (category === 'error') {
+        console.error(`❌ ${message}`, data)
+    } else if (category === 'system') {
+        console.log(`🔧 ${message}`)
+    }
+
+    // Уведомляем слушателей о новом событии
+    listeners.forEach(fn => {
+        try {
+            fn(state)
+        } catch (e) {
+            console.error('❌ Ошибка при уведомлении о событии:', e)
+        }
+    })
+}
+
+export function clearEvents() {
+    state.debug.events = []
+    listeners.forEach(fn => {
+        try {
+            fn(state)
+        } catch (e) {
+            console.error('❌ Ошибка при очистке событий:', e)
+        }
+    })
+}
+
+export function setEventsFilter(filter) {
+    state.debug.eventsFilter = filter
+    listeners.forEach(fn => {
+        try {
+            fn(state)
+        } catch (e) {
+            console.error('❌ Ошибка при смене фильтра:', e)
+        }
+    })
 }

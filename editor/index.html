@@ -92,6 +92,30 @@
         .role-editor .user-role select {
             border-color: #4a90e2;
         }
+
+        /* 🔥 Стили для дебаг элементов */
+        .debug-overlay {
+            pointer-events: none;
+        }
+
+        .debug-event {
+            position: absolute;
+            background: rgba(0,0,0,0.7);
+            color: #0f0;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            max-width: 300px;
+            z-index: 10000;
+            animation: fadeOut 2s forwards;
+        }
+
+        @keyframes fadeOut {
+            0% { opacity: 1; }
+            70% { opacity: 1; }
+            100% { opacity: 0; }
+        }
     </style>
 </head>
 <body>

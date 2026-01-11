@@ -5,6 +5,7 @@ import { loadMap } from './map.js'
 
 import { initUI } from './ui/ui.js'
 import { subscribe, getState, setState } from './ui/store.js'
+import { addEvent } from './ui/store.js'
 
 import { on } from './ws.js'
 import { WS } from './protocol.js'
@@ -18,10 +19,12 @@ import { setUsers } from './ui/modules/usersPanel.js'
 
 const CAMERA_KEY_PREFIX = 'editor-camera-room-'
 
+// 🔥 Экспортируем функцию как named export
 export function initEditor(snapshot) {
     const { roomId, role, map, userId } = snapshot
 
     console.log('🎮 Initializing editor:', { roomId, role, userId })
+    addEvent('system', `Редактор инициализирован`, { roomId, role, userId })
 
     const users = new Map()
     const cursors = new Map()
@@ -39,7 +42,10 @@ export function initEditor(snapshot) {
         try {
             const c = JSON.parse(localStorage.getItem(CAMERA_KEY))
             if (c) Object.assign(camera, c)
-        } catch {}
+            addEvent('system', `Камера восстановлена`, camera)
+        } catch (e) {
+            addEvent('system', 'Не удалось восстановить камеру', { error: e.message })
+        }
     }
 
     function saveCamera() {
@@ -55,13 +61,17 @@ export function initEditor(snapshot) {
     canvas.tabIndex = 0
     canvas.focus()
 
+    addEvent('system', 'Canvas инициализирован', { width: canvas.width, height: canvas.height })
+
     restoreCamera()
 
     // ===== INPUT =====
     initInput(canvas)
+    addEvent('system', 'Система ввода инициализирована')
 
     // ===== UI =====
     initUI()
+    addEvent('system', 'Пользовательский интерфейс инициализирован')
 
     // 🔥 КРИТИЧНО: Устанавливаем начальные значения в правильном порядке
     setState({
@@ -69,6 +79,8 @@ export function initEditor(snapshot) {
         role: role,
         users: []
     })
+
+    addEvent('user', `Пользователь ${userId?.substring(0, 8)} вошёл с ролью ${role}`)
 
     console.log('✅ Store initialized with:', {
         userId: getState().userId,
@@ -79,13 +91,36 @@ export function initEditor(snapshot) {
     const debug = createDebugOverlay()
     debug.init()
 
+    // Добавляем горячую клавишу для дебага (Shift+D)
+    window.addEventListener('keydown', (e) => {
+        if (e.shiftKey && e.key === 'D') {
+            debug.toggle()
+        }
+    })
+
+    // Также добавляем клавишу ESC для сброса позиции дебаг-панели
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && debug.isEnabled()) {
+            const debugPanel = document.querySelector('#debug-overlay')
+            if (debugPanel) {
+                debugPanel.style.left = '8px'
+                debugPanel.style.top = '8px'
+                debugPanel.style.position = 'fixed'
+                localStorage.removeItem('debug-panel-position')
+            }
+        }
+    })
+
     // ===== DRAWING =====
     const drawing = initDrawing(canvas, () => uiState)
     drawing.setReady(true)
     drawing.setMyId(userId)
+    addEvent('system', 'Система рисования инициализирована')
 
     // ===== MAP =====
     loadMap(map)
+    const tileCount = Object.keys(map || {}).length
+    addEvent('system', `Карта загружена`, { tiles: tileCount, roomId })
 
     // ===== WS EVENTS =====
     on('message', msg => {
@@ -98,6 +133,9 @@ export function initEditor(snapshot) {
              */
             case 'room-users': {
                 console.log('👥 Received room-users:', msg.users.map(u => ({ id: u.id, role: u.role })))
+                addEvent('users', `Обновлён список пользователей: ${msg.users.length} пользователей`, {
+                    users: msg.users.map(u => ({ id: u.id.substring(0, 8), name: u.name, role: u.role }))
+                })
 
                 // 🔥 Получаем текущий userId из store
                 const currentUserId = getState().userId
@@ -128,6 +166,7 @@ export function initEditor(snapshot) {
                     if (meInList.role !== getState().role) {
                         console.log(`🔄 Моя роль изменилась с "${getState().role}" на "${meInList.role}"`)
                         setState({ role: meInList.role })
+                        addEvent('user', `Моя роль изменена на "${meInList.role}"`)
                     } else {
                         console.log(`⚡ Моя роль уже определена как "${meInList.role}", принудительное обновление UI`)
                         // 🔥 Даже если роль не изменилась, заставляем UI обновиться
@@ -137,6 +176,10 @@ export function initEditor(snapshot) {
                     console.error('❌ КРИТИЧНО: не удалось найти себя в списке пользователей!', {
                         myId: currentUserId,
                         users: msg.users.map(u => ({ id: u.id, role: u.role }))
+                    })
+                    addEvent('error', 'Не удалось найти себя в списке пользователей', {
+                        myId: currentUserId,
+                        usersCount: msg.users.length
                     })
                 }
                 break
@@ -149,6 +192,10 @@ export function initEditor(snapshot) {
              */
             case WS.ACTION:
             case 'action':
+                addEvent('action', `Получено действие: ${msg.action.type}`, {
+                    actionType: msg.action.type,
+                    actionsCount: msg.action.actions?.length || 1
+                })
                 applyAction(msg.action)
                 break
 
@@ -176,6 +223,10 @@ export function initEditor(snapshot) {
                         name: msg.name,
                         t: performance.now()
                     })
+                    addEvent('action', `Пользователь ${msg.name} рисует`, {
+                        userId: msg.id?.substring(0, 8),
+                        position: { x: msg.x, y: msg.y }
+                    })
                 }
                 break
 
@@ -186,17 +237,61 @@ export function initEditor(snapshot) {
              */
             case 'role-set-response':
                 console.log('✅ Ответ на набор ролей:', msg)
+                if (msg.success) {
+                    addEvent('user', `Роль пользователя ${msg.targetUserId?.substring(0, 8)} изменена на "${msg.role}"`)
+                } else {
+                    addEvent('error', `Ошибка изменения роли: ${msg.error}`, {
+                        targetUserId: msg.targetUserId,
+                        requestedRole: msg.role
+                    })
+                }
+                break
+
+            /**
+             * =====================================================
+             * PING/PONG
+             * =====================================================
+             */
+            case 'pong':
+                addEvent('network', `Pong получен`, { latency: Date.now() - msg.t })
+                break
+
+            /**
+             * =====================================================
+             * ERROR
+             * =====================================================
+             */
+            case 'error':
+                addEvent('error', `Ошибка сервера: ${msg.message}`, msg)
+                break
+
+            /**
+             * =====================================================
+             * SAVE EVENTS
+             * =====================================================
+             */
+            case 'saving':
+                addEvent('system', `Сохранение карты: ${msg.mode}`)
+                break
+
+            case 'saved':
+                addEvent('system', `Карта сохранена: ${msg.mode}`)
                 break
         }
     })
 
     // ===== CLEANUP SOFT LOCKS =====
-    setInterval(() => {
+    const softLockInterval = setInterval(() => {
         const now = performance.now()
+        let removed = 0
         for (const [id, lock] of softLocks) {
             if (now - lock.t > SOFT_LOCK_TTL) {
                 softLocks.delete(id)
+                removed++
             }
+        }
+        if (removed > 0) {
+            addEvent('action', `Удалено ${removed} мягких блокировок`)
         }
     }, 250)
 
@@ -211,5 +306,29 @@ export function initEditor(snapshot) {
         requestAnimationFrame(loop)
     }
 
+    // Запускаем цикл рендеринга
+    addEvent('system', 'Запущен цикл рендеринга')
     loop()
+
+    // Возвращаем объект для управления
+    return {
+        addEvent,
+        toggleDebug: () => debug.toggle(),
+        getDebugStats: () => ({
+            fps,
+            users: users.size,
+            cursors: cursors.size,
+            softLocks: softLocks.size
+        })
+    }
+}
+
+// Глобальный доступ к дебагу
+window.editorDebug = {
+    addEvent,
+    log: (category, message, data) => addEvent(category, message, data),
+    toggleOverlay: () => {
+        const debug = createDebugOverlay()
+        debug.toggle()
+    }
 }
