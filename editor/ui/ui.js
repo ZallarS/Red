@@ -6,8 +6,14 @@ import './modules/toolsPanel.js'
 import './modules/usersPanel.js'
 import './modules/eventsPanel.js'
 
+let uiInitialized = false
+let unsubscribeRole = null
+let observer = null
+
 function applyGlobalStyles() {
     const styles = document.createElement('style')
+    styles.id = 'editor-ui-styles' // 🔥 Добавляем уникальный ID
+
     styles.textContent = `
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         
@@ -58,6 +64,28 @@ function applyGlobalStyles() {
         button:active {
             transform: translateY(1px);
         }
+        
+        /* Стили для кнопки выхода */
+        #exit-room-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #2a2a2a;
+            color: #fff;
+            border: 1px solid #444;
+            border-radius: 6px;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            z-index: 10000;
+            transition: all 0.2s ease;
+        }
+        
+        #exit-room-btn:hover {
+            background: #333;
+            border-color: #555;
+        }
     `
     document.head.appendChild(styles)
 }
@@ -81,6 +109,12 @@ function applyRoleToUI(role) {
 }
 
 export function initUI() {
+    // 🔥 Проверяем, не инициализирован ли уже UI
+    if (uiInitialized) {
+        console.warn('⚠️ UI уже инициализирован')
+        return cleanupUI
+    }
+
     console.log('🔄 Инициализация UI...')
 
     // Применяем глобальные стили
@@ -96,13 +130,14 @@ export function initUI() {
     applyRoleToUI(initialState.role)
 
     // 🔥 РЕАКТИВНО обновляем UI при смене роли
-    subscribe(state => {
+    unsubscribeRole = subscribe(state => {
         console.log('🔄 Запуск подписки на UI, роль:', state.role)
         applyRoleToUI(state.role)
     })
 
     console.log('✅ UI инициализирован.')
     console.log('   - Shift+D: переключить дебаг оверлей')
+    console.log('   - Escape: выход в лобби')
     console.log('   - Используйте табы в правой панели для переключения между пользователями и событиями')
 
     // Добавляем возможность перетаскивания дебаг-панели
@@ -111,7 +146,7 @@ export function initUI() {
     let dragOffset = { x: 0, y: 0 }
 
     // Находим дебаг-панель через мутацию DOM
-    const observer = new MutationObserver(() => {
+    observer = new MutationObserver(() => {
         debugPanel = document.querySelector('[style*="background: rgba(0,0,0,0.9)"]')
         if (debugPanel && !debugPanel.dataset.dragInitialized) {
             debugPanel.id = 'debug-overlay'
@@ -170,4 +205,165 @@ export function initUI() {
     })
 
     observer.observe(document.body, { childList: true, subtree: true })
+
+    // 🔥 Добавляем обработку Escape для выхода
+    const escapeHandler = (e) => {
+        if (e.key === 'Escape') {
+            const state = getState()
+            // Если есть активный userId, значит мы в комнате
+            if (state.userId) {
+                console.log('⎋ Нажата Escape, выход в лобби')
+                e.preventDefault() // Предотвращаем стандартное поведение Escape
+                if (window.CanvasVerse && window.CanvasVerse.exitToLobby) {
+                    window.CanvasVerse.exitToLobby()
+                }
+            }
+        }
+    }
+
+    window.addEventListener('keydown', escapeHandler)
+
+    // Сохраняем обработчик для очистки
+    window.__canvasverse_escapeHandler = escapeHandler
+
+    uiInitialized = true
+
+    // 🔥 Возвращаем функцию очистки
+    return cleanupUI
+}
+
+// 🔥 Функция очистки UI
+export function cleanupUI() {
+    if (!uiInitialized) return
+
+    console.log('🧹 Очистка UI...')
+
+    // Удаляем обработчик Escape
+    if (window.__canvasverse_escapeHandler) {
+        window.removeEventListener('keydown', window.__canvasverse_escapeHandler)
+        delete window.__canvasverse_escapeHandler
+    }
+
+    // Отписываемся от изменений роли
+    if (unsubscribeRole) {
+        unsubscribeRole()
+        unsubscribeRole = null
+    }
+
+    // Останавливаем observer
+    if (observer) {
+        observer.disconnect()
+        observer = null
+    }
+
+    // Удаляем кнопку выхода, если она есть
+    removeExitButton()
+
+    // Удаляем панели
+    removeAllPanels()
+
+    // 🔥 Удаляем ТОЛЬКО стили редактора (не лобби)
+    const styleTag = document.getElementById('editor-ui-styles')
+    if (styleTag && styleTag.parentNode) {
+        styleTag.parentNode.removeChild(styleTag)
+    }
+
+    // 🔥 Не удаляем шрифт Inter, он может быть нужен лобби
+
+    // Удаляем классы ролей с body
+    document.body.classList.remove('role-admin', 'role-editor', 'role-viewer')
+
+    uiInitialized = false
+    console.log('✅ UI очищен')
+}
+
+// 🔥 Функция для удаления всех панелей
+function removeAllPanels() {
+    console.log('🗑️ Удаляем все панели...')
+
+    // Удаляем левую панель и ее переключатель
+    const leftPanel = document.querySelector('[style*="left: 0"][style*="position: fixed"]:not([style*="width: 20px"])')
+    const leftPanelEdge = document.querySelector('[style*="left: 0"][style*="width: 20px"][style*="height: 60px"]')
+
+    // Удаляем правую панель и ее переключатель
+    const rightPanel = document.querySelector('[style*="right: 0"][style*="position: fixed"]:not([style*="width: 20px"])')
+    const rightPanelEdge = document.querySelector('[style*="right: 0"][style*="width: 20px"][style*="height: 60px"]')
+
+    const panels = [leftPanel, leftPanelEdge, rightPanel, rightPanelEdge]
+
+    panels.forEach(panel => {
+        if (panel && panel.parentNode) {
+            try {
+                panel.parentNode.removeChild(panel)
+                console.log(`🗑️ Удалена панель: ${panel === leftPanel || panel === leftPanelEdge ? 'левая' : 'правая'}`)
+            } catch (e) {
+                console.warn('⚠️ Не удалось удалить панель:', e)
+            }
+        }
+    })
+
+    // 🔥 Также удаляем все элементы с классами panel
+    const allPanels = document.querySelectorAll('[class*="panel"]')
+    allPanels.forEach(panel => {
+        if (panel.parentNode && !document.body.contains(panel)) {
+            // Проверяем, что элемент все еще в DOM
+            return
+        }
+
+        // Проверяем, что это действительно панель (имеет стили панели)
+        const style = window.getComputedStyle(panel)
+        if (style.position === 'fixed' && (style.left === '0px' || style.right === '0px')) {
+            try {
+                panel.parentNode.removeChild(panel)
+                console.log('🗑️ Удалена дополнительная панель')
+            } catch (e) {
+                console.warn('⚠️ Не удалось удалить дополнительную панель:', e)
+            }
+        }
+    })
+
+    console.log('✅ Все панели удалены')
+}
+
+// 🔥 Функция для создания кнопки выхода
+export function createExitButton() {
+    // Удаляем старую кнопку, если есть
+    const oldBtn = document.getElementById('exit-room-btn')
+    if (oldBtn) {
+        oldBtn.parentNode.removeChild(oldBtn)
+    }
+
+    // Создаем кнопку выхода
+    const exitBtn = document.createElement('button')
+    exitBtn.id = 'exit-room-btn'
+    exitBtn.innerHTML = '🚪 Выйти в лобби'
+    exitBtn.title = 'Вернуться в лобби (или нажмите Escape)'
+
+    // Клик - выход в лобби
+    exitBtn.addEventListener('click', () => {
+        console.log('🚪 Выход в лобби...')
+        if (window.CanvasVerse && window.CanvasVerse.exitToLobby) {
+            window.CanvasVerse.exitToLobby()
+        }
+    })
+
+    document.body.appendChild(exitBtn)
+}
+
+// 🔥 Функция удаления кнопки выхода
+export function removeExitButton() {
+    const exitBtn = document.getElementById('exit-room-btn')
+    if (exitBtn && exitBtn.parentNode) {
+        try {
+            exitBtn.parentNode.removeChild(exitBtn)
+            console.log('🗑️ Удалена кнопка выхода')
+        } catch (e) {
+            console.warn('⚠️ Не удалось удалить кнопку выхода:', e)
+        }
+    }
+}
+
+// 🔥 Функция проверки инициализации UI
+export function isUIInitialized() {
+    return uiInitialized
 }

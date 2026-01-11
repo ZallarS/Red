@@ -240,6 +240,37 @@ wss.on('connection', ws => {
             return
         }
 
+        // 🔥 ===== ROOM LEAVE =====
+        if (msg.type === 'room-leave') {
+            if (room && userId) {
+                console.log(`🚪 Пользователь ${userId} покидает комнату ${room.id}`)
+
+                // Удаляем пользователя из комнаты
+                room.users.delete(ws)
+
+                // Если пользователей не осталось, можно очистить комнату из памяти
+                if (room.users.size === 0) {
+                    console.log(`🏁 Комната ${room.id} пуста, очищаем из памяти`)
+                    // Сохраняем перед удалением
+                    saveRoom(room)
+                    rooms.delete(room.id)
+                } else {
+                    // Обновляем список пользователей для оставшихся
+                    broadcastRoomUsers(room)
+                }
+
+                // Отправляем подтверждение клиенту
+                ws.send(JSON.stringify({
+                    type: 'room-left',
+                    roomId: room.id,
+                    success: true
+                }))
+
+                room = null
+            }
+            return
+        }
+
         if (!room) return
 
         // ===== ROLE SET =====
@@ -349,9 +380,22 @@ wss.on('connection', ws => {
     })
 
     ws.on('close', () => {
-        if (!room) return
-        room.users.delete(ws)
-        broadcastRoomUsers(room)
+        if (room && userId) {
+            console.log(`🔌 WebSocket закрыт, удаляем пользователя ${userId} из комнаты ${room.id}`)
+            room.users.delete(ws)
+
+            // Если пользователей не осталось, очищаем комнату из памяти
+            if (room.users.size === 0) {
+                console.log(`🏁 Комната ${room.id} пуста, очищаем из памяти`)
+                saveRoom(room)
+                rooms.delete(room.id)
+            } else {
+                broadcastRoomUsers(room)
+            }
+        }
+
+        // Удаляем пользователя из глобального списка при полном отключении
+        users.delete(userId)
     })
 })
 

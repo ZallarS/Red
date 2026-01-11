@@ -1,6 +1,9 @@
 import { subscribe, setState } from '../store.js'
 import { getPanelModule, getAllModules } from './panelRegistry.js'
 
+// 🔥 Объявляем panelContainers на уровне модуля, ПЕРЕД функциями
+const panelContainers = new Map()
+
 export function createPanelContainer(side) {
     const root = document.createElement('div')
     const edge = document.createElement('div')
@@ -280,17 +283,60 @@ export function createPanelContainer(side) {
         if (unsubscribeStore) {
             unsubscribeStore()
         }
+
+        // 🔥 Удаляем панели из DOM
         if (root.parentNode) {
             root.parentNode.removeChild(root)
         }
         if (edge.parentNode) {
             edge.parentNode.removeChild(edge)
         }
+
+        // 🔥 Удаляем из Map
+        panelContainers.delete(side)
     }
 
     document.body.appendChild(root)
     document.body.appendChild(edge)
 
-    // 🔥 ВОЗВРАЩАЕМ ФУНКЦИЮ ДЛЯ ОЧИСТКИ (опционально)
+    // 🔥 Сохраняем ссылки на элементы в Map
+    panelContainers.set(side, { root, edge, cleanupContainer })
+
+    // 🔥 ВОЗВРАЩАЕМ ФУНКЦИЮ ДЛЯ ОЧИСТКИ
     return cleanupContainer
+}
+
+// 🔥 Экспортируем функцию для удаления всех панелей
+export function cleanupAllPanels() {
+    console.log('🗑️ Удаляем все панели...')
+
+    // Создаем копию массива, так как мы будем удалять элементы
+    const sides = [...panelContainers.keys()]
+
+    sides.forEach(side => {
+        const container = panelContainers.get(side)
+        if (container && container.cleanupContainer) {
+            try {
+                container.cleanupContainer()
+                console.log(`✅ Удалена панель: ${side}`)
+            } catch (e) {
+                console.error(`❌ Ошибка при удалении панели ${side}:`, e)
+            }
+        }
+    })
+
+    // Очищаем Map после удаления всех панелей
+    panelContainers.clear()
+
+    console.log('✅ Все панели удалены')
+}
+
+// 🔥 Функция для проверки существования панели
+export function hasPanel(side) {
+    return panelContainers.has(side)
+}
+
+// 🔥 Функция для получения количества панелей
+export function getPanelCount() {
+    return panelContainers.size
 }

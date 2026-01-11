@@ -3,11 +3,11 @@ import { drawGrid } from './grid.js'
 import { camera } from './camera.js'
 import { loadMap } from './map.js'
 
-import { initUI } from './ui/ui.js'
+import { initUI, cleanupUI } from './ui/ui.js'
 import { subscribe, getState, setState } from './ui/store.js'
 import { addEvent } from './ui/store.js'
 
-import { on } from './ws.js'
+import { on,off } from './ws.js'
 import { WS } from './protocol.js'
 
 import { createDebugOverlay } from './debug.js'
@@ -34,7 +34,10 @@ export function initEditor(snapshot) {
     const SOFT_LOCK_TTL = 500
 
     let uiState = getState()
-    subscribe(s => (uiState = s))
+    let unsubscribeStore = null
+    let animationFrameId = null
+    let softLockInterval = null
+    let uiCleanupFunction = null
 
     const CAMERA_KEY = CAMERA_KEY_PREFIX + roomId
 
@@ -66,11 +69,17 @@ export function initEditor(snapshot) {
     restoreCamera()
 
     // ===== INPUT =====
-    initInput(canvas)
+    const inputCleanup = initInput(canvas)
     addEvent('system', 'Система ввода инициализирована')
 
+    if (window.__canvasverse_uiInitialized) {
+        console.log('⚠️ UI уже инициализирован, очищаем перед повторной инициализацией')
+        cleanupUI()
+    }
+
     // ===== UI =====
-    initUI()
+    uiCleanupFunction = initUI()
+    window.__canvasverse_uiInitialized = true
     addEvent('system', 'Пользовательский интерфейс инициализирован')
 
     // 🔥 КРИТИЧНО: Устанавливаем начальные значения в правильном порядке
@@ -92,14 +101,15 @@ export function initEditor(snapshot) {
     debug.init()
 
     // Добавляем горячую клавишу для дебага (Shift+D)
-    window.addEventListener('keydown', (e) => {
+    const debugKeyHandler = (e) => {
         if (e.shiftKey && e.key === 'D') {
             debug.toggle()
         }
-    })
+    }
+    window.addEventListener('keydown', debugKeyHandler)
 
     // Также добавляем клавишу ESC для сброса позиции дебаг-панели
-    window.addEventListener('keydown', (e) => {
+    const escapeKeyHandler = (e) => {
         if (e.key === 'Escape' && debug.isEnabled()) {
             const debugPanel = document.querySelector('#debug-overlay')
             if (debugPanel) {
@@ -109,7 +119,8 @@ export function initEditor(snapshot) {
                 localStorage.removeItem('debug-panel-position')
             }
         }
-    })
+    }
+    window.addEventListener('keydown', escapeKeyHandler)
 
     // ===== DRAWING =====
     const drawing = initDrawing(canvas, () => uiState)
@@ -123,7 +134,7 @@ export function initEditor(snapshot) {
     addEvent('system', `Карта загружена`, { tiles: tileCount, roomId })
 
     // ===== WS EVENTS =====
-    on('message', msg => {
+    const messageHandler = msg => {
         switch (msg.type) {
 
             /**
@@ -239,20 +250,21 @@ export function initEditor(snapshot) {
                 console.log('✅ Ответ на набор ролей:', msg)
                 if (msg.success) {
                     addEvent('user', `Роль пользователя ${msg.targetUserId?.substring(0, 8)} изменена на "${msg.role}"`)
-
-                    // 🔥 ОБНОВЛЯЕМ СПИСОК ПОЛЬЗОВАТЕЛЕЙ ПОСЛЕ ИЗМЕНЕНИЯ РОЛИ
-                    // Запрашиваем актуальный список пользователей
-                    setTimeout(() => {
-                        console.log('🔄 Запрашиваем обновленный список пользователей после изменения роли')
-                        // Здесь можно отправить запрос на сервер для получения обновленного списка
-                        // или обновить локально, если сервер не отправил автоматически
-                    }, 100)
                 } else {
                     addEvent('error', `Ошибка изменения роли: ${msg.error}`, {
                         targetUserId: msg.targetUserId,
                         requestedRole: msg.role
                     })
                 }
+                break
+
+            /**
+             * =====================================================
+             * ROOM LEFT (НОВОЕ)
+             * =====================================================
+             */
+            case 'room-left':
+                addEvent('system', `Вышел из комнаты ${msg.roomId}`)
                 break
 
             /**
@@ -285,30 +297,14 @@ export function initEditor(snapshot) {
             case 'saved':
                 addEvent('system', `Карта сохранена: ${msg.mode}`)
                 break
-
-            /**
-             * =====================================================
-             * USER JOINED/LEFT EVENTS (ДОБАВЛЕНО)
-             * =====================================================
-             */
-            case 'user-joined':
-                addEvent('users', `Пользователь ${msg.userId?.substring(0, 8)} присоединился`, {
-                    userId: msg.userId,
-                    name: msg.name
-                })
-                break
-
-            case 'user-left':
-                addEvent('users', `Пользователь ${msg.userId?.substring(0, 8)} покинул комнату`, {
-                    userId: msg.userId,
-                    name: msg.name
-                })
-                break
         }
-    })
+    }
+
+    // Подписываемся на сообщения
+    on('message', messageHandler)
 
     // ===== CLEANUP SOFT LOCKS =====
-    const softLockInterval = setInterval(() => {
+    softLockInterval = setInterval(() => {
         const now = performance.now()
         let removed = 0
         for (const [id, lock] of softLocks) {
@@ -323,30 +319,108 @@ export function initEditor(snapshot) {
     }, 250)
 
     // ===== RENDER LOOP =====
-    let animationFrameId = null
-    let lastRenderTime = 0
-    const targetFPS = 60
-    const frameInterval = 1000 / targetFPS
-
-    function loop(currentTime) {
-        animationFrameId = requestAnimationFrame(loop)
-
-        // Ограничение FPS
-        const delta = currentTime - lastRenderTime
-        if (delta < frameInterval) return
-
-        lastRenderTime = currentTime - (delta % frameInterval)
-
+    function loop() {
         render(ctx, canvas, cursors, softLocks)
         if (uiState.grid) drawGrid(ctx, canvas)
 
         debug.update(null, uiState, users.size)
         saveCamera()
+
+        animationFrameId = requestAnimationFrame(loop)
     }
 
     // Запускаем цикл рендеринга
     addEvent('system', 'Запущен цикл рендеринга')
     loop()
+
+    // 🔥 ФУНКЦИЯ ОЧИСТКИ
+    function cleanup() {
+        console.log('🧹 Очистка редактора...')
+
+        if (uiCleanupFunction) {
+            uiCleanupFunction()
+            uiCleanupFunction = null
+        }
+
+        if (window.__canvasverse_uiInitialized) {
+            window.__canvasverse_uiInitialized = false
+        }
+
+        if (messageHandler) {
+            off('message', messageHandler)
+            console.log('📡 Отписаны от WebSocket сообщений')
+        }
+
+        // Останавливаем рендер-луп
+        if (animationFrameId) {
+            cancelAnimationFrame(animationFrameId)
+            console.log('⏹️ Остановлен рендер-луп')
+        }
+
+        // Останавливаем интервал
+        if (softLockInterval) {
+            clearInterval(softLockInterval)
+            console.log('⏹️ Остановлен интервал мягких блокировок')
+        }
+
+        // Отписываемся от store
+        if (unsubscribeStore) {
+            unsubscribeStore()
+            console.log('🔇 Отписаны от store')
+        }
+
+        // Удаляем обработчики клавиш
+        window.removeEventListener('keydown', debugKeyHandler)
+        window.removeEventListener('keydown', escapeKeyHandler)
+        console.log('⌨️ Удалены обработчики клавиш')
+
+        // Очищаем canvas
+        if (canvas && ctx) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
+            console.log('🧽 Canvas очищен')
+        }
+
+        // Вызываем очистку input
+        if (inputCleanup && typeof inputCleanup === 'function') {
+            inputCleanup()
+            console.log('🖱️ Очищена система ввода')
+        }
+
+        // Очищаем WebSocket обработчики (нужно добавить off в ws.js)
+        // Пока что просто очищаем наш обработчик
+
+        // Очищаем состояние store (только если мы владелец)
+        try {
+            setState({
+                tool: 'draw',
+                grid: true,
+                snapping: true,
+                users: [],
+                userId: null,
+                role: 'viewer',
+                panels: {
+                    left: { open: true, active: 'tools' },
+                    right: { open: true, active: 'users' }
+                },
+                debug: {
+                    ...getState().debug,
+                    events: [] // 🔥 Очищаем события
+                }
+            })
+            console.log('🔄 Состояние store сброшено')
+        } catch (e) {
+            console.error('❌ Ошибка при сбросе store:', e)
+        }
+
+        // Скрываем дебаг панель
+        const debugPanel = document.getElementById('debug-overlay')
+        if (debugPanel) {
+            debugPanel.style.display = 'none'
+        }
+
+        addEvent('system', 'Редактор остановлен')
+        console.log('✅ Очистка редактора завершена')
+    }
 
     // Возвращаем объект для управления
     return {
@@ -358,13 +432,20 @@ export function initEditor(snapshot) {
             softLocks: softLocks.size,
             roomId
         }),
-        cleanup: () => {
-            if (animationFrameId) {
-                cancelAnimationFrame(animationFrameId)
-            }
-            clearInterval(softLockInterval)
-            addEvent('system', 'Редактор остановлен')
-        }
+        cleanup
+    }
+
+    // Возвращаем объект для управления
+    return {
+        addEvent,
+        toggleDebug: () => debug.toggle(),
+        getDebugStats: () => ({
+            users: users.size,
+            cursors: cursors.size,
+            softLocks: softLocks.size,
+            roomId
+        }),
+        cleanup // 🔥 Добавляем функцию очистки
     }
 }
 

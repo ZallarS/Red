@@ -90,6 +90,57 @@ function startPing() {
     }, 2000)
 }
 
+// Очистка всех слушателей (для тестирования)
+export function clearAllListeners() {
+    const count = getListenerCount()
+    listeners.clear()
+    console.log(`🧹 Очищены все слушатели (${count})`)
+}
+
+/**
+ * ===============================
+ * UTILITY FUNCTIONS
+ * ===============================
+ */
+
+// Получение количества активных слушателей
+export function getListenerCount(type = null) {
+    if (type) {
+        const list = listeners.get(type)
+        return list ? list.length : 0
+    }
+
+    // Общее количество
+    let total = 0
+    listeners.forEach(list => {
+        total += list.length
+    })
+    return total
+}
+
+/**
+ * ===============================
+ * UNSUBSCRIBE FROM EVENTS
+ * ===============================
+ */
+
+export function off(type, fn) {
+    const list = listeners.get(type)
+    if (!list) return
+
+    const index = list.indexOf(fn)
+    if (index > -1) {
+        list.splice(index, 1)
+    }
+
+    // Если больше нет слушателей, удаляем тип
+    if (list.length === 0) {
+        listeners.delete(type)
+    }
+
+    console.log(`🔕 Отписались от событий типа: ${type}`)
+}
+
 function stopPing() {
     if (pingTimer) {
         clearInterval(pingTimer)
@@ -112,6 +163,9 @@ export function connect() {
     ws.onopen = () => {
         retries = 0
         setStatus('online')
+
+        // 🔥 Устанавливаем флаг соединения
+        window.__canvasverse_ws_connected = true
 
         // ✅ ОТПРАВЛЯЕМ userId, А НЕ sessionId
         console.log('📤 Отправка авторизации с идентификатором пользователя:', userId)
@@ -154,6 +208,9 @@ export function connect() {
     ws.onclose = () => {
         stopPing()
         setStatus('Переподключение...')
+
+        // 🔥 Сбрасываем флаг соединения
+        window.__canvasverse_ws_connected = false
 
         const timeout = Math.min(3000 + retries * 2000, 15000)
         retries++

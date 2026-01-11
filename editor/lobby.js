@@ -1,15 +1,23 @@
-import { send, on } from './ws.js'
+import { send, on, off } from './ws.js'
 
 let root = null
 let input = null
 let styleEl = null
 let listEl = null
 let requested = false
+let messageHandler = null
 
 function ensureStyles() {
-    if (styleEl) return
+    // 🔥 Проверяем, не добавлены ли уже стили лобби
+    const existingStyles = document.getElementById('lobby-styles')
+    if (existingStyles) {
+        styleEl = existingStyles
+        return
+    }
 
     styleEl = document.createElement('style')
+    styleEl.id = 'lobby-styles' // 🔥 Добавляем уникальный ID
+
     styleEl.textContent = `
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         
@@ -351,99 +359,9 @@ function ensureStyles() {
     document.head.appendChild(styleEl)
 }
 
-export function mountLobby() {
-    if (root) return
-    ensureStyles()
-
-    root = document.createElement('div')
-    root.id = 'lobby'
-    root.innerHTML = `
-        <div class="lobby-window">
-            <h1 class="lobby-title">CanvasVerse</h1>
-            <div class="lobby-subtitle">Выберите комнату для совместного рисования</div>
-            
-            <div class="lobby-input-container">
-                <div class="lobby-input-wrapper">
-                    <input
-                        id="roomIdInput"
-                        class="lobby-input"
-                        placeholder="Введите код комнаты"
-                        autocomplete="off"
-                        spellcheck="false"
-                    />
-                    <button id="joinBtn" class="lobby-input-btn">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
-                            <polyline points="10 17 15 12 10 7"></polyline>
-                            <line x1="15" y1="12" x2="3" y2="12"></line>
-                        </svg>
-                        Войти
-                    </button>
-                </div>
-                
-                <button id="createBtn" class="lobby-create-btn">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 5v14M5 12h14"></path>
-                    </svg>
-                    Создать новую комнату
-                </button>
-            </div>
-            
-            <div class="lobby-divider">
-                <span>или выберите из списка</span>
-            </div>
-            
-            <div class="lobby-rooms">
-                <div class="lobby-rooms-title">Активные комнаты</div>
-                <div class="lobby-rooms-list" id="roomsList">
-                    <div class="loading">
-                        <div class="loading-spinner"></div>
-                        <div class="empty-state-text">Загрузка комнат...</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `
-
-    document.body.appendChild(root)
-
-    input = root.querySelector('#roomIdInput')
-    listEl = root.querySelector('#roomsList')
-
-    // Фокус на поле ввода при открытии
-    setTimeout(() => input.focus(), 100)
-
-    // Обработка клавиши Enter
-    input.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            joinRoom()
-        }
-    })
-
-    function joinRoom() {
-        const id = input.value.trim()
-        if (!id) {
-            // Анимация ошибки
-            input.style.borderColor = '#ff4757'
-            input.style.animation = 'shake 0.5s ease'
-            setTimeout(() => {
-                input.style.borderColor = ''
-                input.style.animation = ''
-            }, 500)
-            return
-        }
-        history.pushState({}, '', `/room/${id}`)
-        window.dispatchEvent(new Event('routechange'))
-    }
-
-    root.querySelector('#joinBtn').onclick = joinRoom
-
-    root.querySelector('#createBtn').onclick = () => {
-        send({ type: 'room-create' })
-    }
-
-    // ===== WS EVENTS =====
-    on('message', msg => {
+// 🔥 Выносим функцию обработки сообщений на уровень модуля
+function createMessageHandler() {
+    return function(msg) {
         if (msg.type === 'auth-ok' && !requested) {
             requested = true
             send({ type: 'room-list' })
@@ -452,10 +370,12 @@ export function mountLobby() {
         if (msg.type === 'room-list-response') {
             renderRooms(msg.rooms)
         }
-    })
+    }
 }
 
 function renderRooms(rooms) {
+    if (!listEl) return
+
     listEl.innerHTML = ''
 
     if (!rooms || rooms.length === 0) {
@@ -519,7 +439,6 @@ function renderRooms(rooms) {
     })
 }
 
-// Вспомогательная функция для правильного склонения
 function getUserPlural(count) {
     if (count % 10 === 1 && count % 100 !== 11) return ''
     if (count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20)) return 'а'
@@ -529,20 +448,189 @@ function getUserPlural(count) {
 export function unmountLobby() {
     if (!root) return
 
+    console.log('👋 Убираем лобби...')
+
+    // 🔥 Убираем обработчик сообщений
+    if (messageHandler) {
+        off('message', messageHandler)
+        messageHandler = null
+    }
+
     // Анимация закрытия
     root.style.opacity = '1'
     root.style.animation = 'fadeOut 0.2s ease-out forwards'
 
+    // Сохраняем ссылку на root перед очисткой
+    const rootElement = root
+
     setTimeout(() => {
-        root.remove()
+        // Безопасное удаление элемента
+        if (rootElement && rootElement.parentNode) {
+            rootElement.parentNode.removeChild(rootElement)
+        }
+
         root = null
         input = null
         listEl = null
         requested = false
+
+        // 🔥 НЕ удаляем стили лобби, оставляем их для возможного повторного использования
+        // Стили остаются в DOM, но скрыты
+
+        console.log('✅ Лобби убрано')
     }, 200)
+}
+
+export function mountLobby() {
+    // 🔥 Проверяем, не смонтировано ли уже лобби
+    if (root) {
+        console.log('⚠️ Лобби уже смонтировано')
+        return
+    }
+
+    ensureStyles()
+
+    root = document.createElement('div')
+    root.id = 'lobby'
+    root.innerHTML = `
+        <div class="lobby-window">
+            <h1 class="lobby-title">CanvasVerse</h1>
+            <div class="lobby-subtitle">Выберите комнату для совместного рисования</div>
+            
+            <div class="lobby-input-container">
+                <div class="lobby-input-wrapper">
+                    <input
+                        id="roomIdInput"
+                        class="lobby-input"
+                        placeholder="Введите код комнаты"
+                        autocomplete="off"
+                        spellcheck="false"
+                    />
+                    <button id="joinBtn" class="lobby-input-btn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+                            <polyline points="10 17 15 12 10 7"></polyline>
+                            <line x1="15" y1="12" x2="3" y2="12"></line>
+                        </svg>
+                        Войти
+                    </button>
+                </div>
+                
+                <button id="createBtn" class="lobby-create-btn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 5v14M5 12h14"></path>
+                    </svg>
+                    Создать новую комнату
+                </button>
+            </div>
+            
+            <div class="lobby-divider">
+                <span>или выберите из списка</span>
+            </div>
+            
+            <div class="lobby-rooms">
+                <div class="lobby-rooms-title">Активные комнаты</div>
+                <div class="lobby-rooms-list" id="roomsList">
+                    <div class="loading">
+                        <div class="loading-spinner"></div>
+                        <div class="empty-state-text">Загрузка комнат...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `
+
+    document.body.appendChild(root)
+
+    input = root.querySelector('#roomIdInput')
+    listEl = root.querySelector('#roomsList')
+
+    // 🔥 Сбрасываем флаг requested, чтобы заново запросить список
+    requested = false
+
+    // Фокус на поле ввода при открытии
+    setTimeout(() => {
+        if (input) {
+            input.focus()
+            // 🔥 Очищаем поле ввода
+            input.value = ''
+        }
+    }, 100)
+
+    // Обработка клавиши Enter
+    if (input) {
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                joinRoom()
+            }
+        })
+    }
+
+    function joinRoom() {
+        const id = input.value.trim()
+        if (!id) {
+            // Анимация ошибки
+            input.style.borderColor = '#ff4757'
+            input.style.animation = 'shake 0.5s ease'
+            setTimeout(() => {
+                input.style.borderColor = ''
+                input.style.animation = ''
+            }, 500)
+            return
+        }
+        history.pushState({}, '', `/room/${id}`)
+        window.dispatchEvent(new Event('routechange'))
+    }
+
+    const joinBtn = root.querySelector('#joinBtn')
+    if (joinBtn) {
+        joinBtn.onclick = joinRoom
+    }
+
+    const createBtn = root.querySelector('#createBtn')
+    if (createBtn) {
+        createBtn.onclick = () => {
+            send({ type: 'room-create' })
+        }
+    }
+
+    // ===== WS EVENTS =====
+    // 🔥 Создаем новый обработчик сообщений
+    messageHandler = createMessageHandler()
+    on('message', messageHandler)
+
+    // 🔥 ПРИНУДИТЕЛЬНО ЗАПРАШИВАЕМ СПИСОК КОМНАТ ПРИ МОНТИРОВАНИИ
+    console.log('📡 Запрашиваем список комнат...')
+
+    // 🔥 Проверяем соединение перед отправкой
+    const checkConnection = () => {
+        // Если соединение установлено, отправляем запрос
+        if (window.__canvasverse_ws_connected) {
+            send({ type: 'room-list' })
+        } else {
+            // Если соединение еще не установлено, ждем
+            console.log('⏳ Ожидаем установки соединения...')
+            setTimeout(checkConnection, 100)
+        }
+    }
+
+    checkConnection()
+
+    console.log('✅ Лобби смонтировано')
+
+    // 🔥 Возвращаем функцию для ручной очистки
+    return () => {
+        console.log('🧹 Ручная очистка лобби')
+        unmountLobby()
+    }
 }
 
 export function onRoomCreated(roomId) {
     history.pushState({}, '', `/room/${roomId}`)
     window.dispatchEvent(new Event('routechange'))
+}
+
+// 🔥 Добавим функцию для проверки состояния лобби
+export function isLobbyMounted() {
+    return !!root
 }
