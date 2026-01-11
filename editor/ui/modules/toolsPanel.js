@@ -2,7 +2,7 @@ import { setState, getState, subscribe } from '../store.js'
 import { registerPanelModule } from '../panels/panelRegistry.js'
 
 registerPanelModule('tools', {
-    title: 'Tools',
+    title: 'Инстурменты',
 
     render(el) {
         function button(label, onClick) {
@@ -12,18 +12,18 @@ registerPanelModule('tools', {
             return b
         }
 
-        const drawBtn = button('✏ Draw', () => setState({ tool: 'draw' }))
-        const eraseBtn = button('🧽 Erase', () => setState({ tool: 'erase' }))
-        const gridBtn = button('# Grid', () => setState({ grid: !getState().grid }))
-        const snapBtn = button('🧲 Snap', () => setState({ snapping: !getState().snapping }))
+        const drawBtn = button('✏', () => setState({ tool: 'draw' }))
+        const eraseBtn = button('🧽', () => setState({ tool: 'erase' }))
+        const gridBtn = button('᎒᎒᎒', () => setState({ grid: !getState().grid }))
+        const snapBtn = button('🧲', () => setState({ snapping: !getState().snapping }))
 
         el.append(drawBtn, eraseBtn, gridBtn, snapBtn)
 
         subscribe(state => {
-            drawBtn.style.fontWeight = state.tool === 'draw' ? 'bold' : 'normal'
-            eraseBtn.style.fontWeight = state.tool === 'erase' ? 'bold' : 'normal'
-            gridBtn.textContent = state.grid ? '# Grid' : '# Grid (off)'
-            snapBtn.textContent = state.snapping ? '🧲 Snap' : '🧲 Snap (off)'
+            drawBtn.style.fontWeight = state.tool === '' ? 'bold' : 'normal'
+            eraseBtn.style.fontWeight = state.tool === '' ? 'bold' : 'normal'
+            gridBtn.textContent = state.grid ? '᎒᎒᎒' : '᎒᎒᎒(выкл.)'
+            snapBtn.textContent = state.snapping ? '🧲' : '🧲(выкл.)'
         })
     }
 })

@@ -20,7 +20,7 @@ export function setUsers(users) {
 
 // ===== PANEL MODULE =====
 registerPanelModule('users', {
-    title: 'Users',
+    title: 'Пользователели',
 
     render(container) {
         container.innerHTML = ''

@@ -85,17 +85,17 @@ export function mountLobby() {
             <input
                 id="roomIdInput"
                 class="lobby-input"
-                placeholder="Room ID"
+                placeholder="ID комнаты"
                 autocomplete="off"
             />
 
             <div class="lobby-buttons">
-                <button id="joinBtn" class="lobby-btn">Join</button>
-                <button id="createBtn" class="lobby-btn">Create</button>
+                <button id="joinBtn" class="lobby-btn">Войти</button>
+                <button id="createBtn" class="lobby-btn">Создать</button>
             </div>
 
             <div class="lobby-rooms" id="roomsList">
-                <div style="opacity:.6">Loading…</div>
+                <div style="opacity:.6">Загрузка…</div>
             </div>
         </div>
     `
@@ -133,7 +133,7 @@ function renderRooms(rooms) {
     listEl.innerHTML = ''
 
     if (!rooms || rooms.length === 0) {
-        listEl.innerHTML = `<div style="opacity:.6">No rooms</div>`
+        listEl.innerHTML = `<div style="opacity:.6">Нет комнат</div>`
         return
     }
 
@@ -143,7 +143,7 @@ function renderRooms(rooms) {
 
         el.innerHTML = `
             <div class="lobby-room-id">${room.id}</div>
-            <div class="lobby-room-users">${room.users} user(s)</div>
+            <div class="lobby-room-users">${room.users} Пользовтателей</div>
         `
 
         el.onclick = () => {
