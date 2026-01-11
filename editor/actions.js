@@ -1,5 +1,3 @@
-// editor/actions.js
-
 import { getTile, setTile } from './map.js'
 import { ACTION, WS } from './protocol.js'
 import { send } from './ws.js'
@@ -63,6 +61,8 @@ export function revertAction(action) {
  * Реальная проверка прав — на сервере
  */
 export function setUserRole(targetUserId, role) {
+    console.log(`📤 Requesting role change: ${targetUserId} -> ${role}`)
+
     send({
         type: WS.ROLE_SET,
         targetUserId,

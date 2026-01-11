@@ -86,17 +86,21 @@ function broadcastRoom(room, msg, except = null) {
 }
 
 function broadcastRoomUsers(room) {
+    const userList = [...room.roles.entries()].map(([userId, role]) => {
+        const u = users.get(userId)
+        return {
+            id: userId,
+            name: u?.name || 'Unknown',
+            color: u?.color || '#888',
+            role
+        }
+    })
+
+    console.log('📤 Broadcasting room-users:', userList.map(u => ({ id: u.id, role: u.role })))
+
     broadcastRoom(room, {
         type: 'room-users',
-        users: [...room.roles.entries()].map(([userId, role]) => {
-            const u = users.get(userId)
-            return {
-                id: userId,
-                name: u?.name || 'Unknown',
-                color: u?.color || '#888',
-                role
-            }
-        })
+        users: userList
     })
 }
 
@@ -222,13 +226,16 @@ wss.on('connection', ws => {
 
             room.users.set(ws, userId)
 
+            // 🔥 Отправляем snapshot с userId
             ws.send(JSON.stringify({
                 type: 'room-snapshot',
                 roomId,
+                userId: userId, // 🔥 ВАЖНО: отправляем userId клиенту
                 role: room.roles.get(userId),
                 map: Object.fromEntries(room.map)
             }))
 
+            // 🔥 Отправляем обновленный список пользователей ВСЕМ
             broadcastRoomUsers(room)
             return
         }
@@ -239,26 +246,68 @@ wss.on('connection', ws => {
         if (msg.type === 'role-set') {
             const { targetUserId, role } = msg
 
-            if (!isAdmin(room, userId)) return
-            if (!VALID_ROLES.has(role)) return
-            if (!room.roles.has(targetUserId)) return
+            if (!isAdmin(room, userId)) {
+                ws.send(JSON.stringify({
+                    type: 'role-set-response',
+                    success: false,
+                    error: 'Not authorized'
+                }))
+                return
+            }
+
+            if (!VALID_ROLES.has(role)) {
+                ws.send(JSON.stringify({
+                    type: 'role-set-response',
+                    success: false,
+                    error: 'Invalid role'
+                }))
+                return
+            }
+
+            if (!room.roles.has(targetUserId)) {
+                ws.send(JSON.stringify({
+                    type: 'role-set-response',
+                    success: false,
+                    error: 'User not found'
+                }))
+                return
+            }
 
             // 🛡️ ЗАПРЕТ САМОПОНИЖЕНИЯ АДМИНА
             if (targetUserId === userId && role !== 'admin') {
+                ws.send(JSON.stringify({
+                    type: 'role-set-response',
+                    success: false,
+                    error: 'Cannot demote yourself from admin'
+                }))
                 return
             }
 
             // 🛡️ защита от снятия последнего админа
-            if (
-                role !== 'admin' &&
-                room.roles.get(targetUserId) === 'admin'
-            ) {
+            if (role !== 'admin' && room.roles.get(targetUserId) === 'admin') {
                 const admins = [...room.roles.values()].filter(r => r === 'admin')
-                if (admins.length <= 1) return
+                if (admins.length <= 1) {
+                    ws.send(JSON.stringify({
+                        type: 'role-set-response',
+                        success: false,
+                        error: 'Cannot remove last admin'
+                    }))
+                    return
+                }
             }
 
             room.roles.set(targetUserId, role)
             saveRoom(room)
+
+            // 🔥 Отправляем успешный ответ
+            ws.send(JSON.stringify({
+                type: 'role-set-response',
+                success: true,
+                targetUserId,
+                role
+            }))
+
+            // 🔥 ОТПРАВЛЯЕМ ОБНОВЛЁННЫЙ СПИСОК ВСЕМ ПОЛЬЗОВАТЕЛЯМ
             broadcastRoomUsers(room)
             return
         }

@@ -34,6 +34,20 @@ if (!userId) {
     localStorage.setItem(USER_ID_KEY, userId)
 }
 
+// 🔥 Экспортируем userId для использования в других модулях
+export function getUserId() {
+    return userId
+}
+
+// 🔥 Функция для обновления userId (на случай, если нужно изменить)
+export function setUserId(newUserId) {
+    if (newUserId && newUserId !== userId) {
+        userId = newUserId
+        localStorage.setItem(USER_ID_KEY, userId)
+        console.log('🆔 User ID updated to:', userId)
+    }
+}
+
 /**
  * ===============================
  * CONNECTION STATE
@@ -100,6 +114,7 @@ export function connect() {
         setStatus('online')
 
         // ✅ ОТПРАВЛЯЕМ userId, А НЕ sessionId
+        console.log('📤 Sending auth with userId:', userId)
         send({
             type: WS.AUTH,
             userId
@@ -126,6 +141,11 @@ export function connect() {
                 ping
             })
             return
+        }
+
+        // 🔥 Логируем входящие сообщения для отладки
+        if (msg.type === 'room-users') {
+            console.log('📥 Received room-users:', msg.users)
         }
 
         emit('message', msg)

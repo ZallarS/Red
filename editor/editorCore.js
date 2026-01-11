@@ -1,5 +1,3 @@
-// editor/editorCore.js
-
 import { render } from './render.js'
 import { drawGrid } from './grid.js'
 import { camera } from './camera.js'
@@ -22,6 +20,8 @@ const CAMERA_KEY_PREFIX = 'editor-camera-room-'
 
 export function initEditor(snapshot) {
     const { roomId, role, map, userId } = snapshot
+
+    console.log('🎮 Initializing editor:', { roomId, role, userId })
 
     const users = new Map()
     const cursors = new Map()
@@ -61,10 +61,18 @@ export function initEditor(snapshot) {
     initInput(canvas)
 
     // ===== UI =====
-    initUI({ role })
+    initUI()
+
+    // 🔥 КРИТИЧНО: Устанавливаем начальные значения в правильном порядке
     setState({
-        role,
-        userId
+        userId: userId,
+        role: role,
+        users: []
+    })
+
+    console.log('✅ Store initialized with:', {
+        userId: getState().userId,
+        role: getState().role
     })
 
     // ===== DEBUG =====
@@ -74,6 +82,7 @@ export function initEditor(snapshot) {
     // ===== DRAWING =====
     const drawing = initDrawing(canvas, () => uiState)
     drawing.setReady(true)
+    drawing.setMyId(userId)
 
     // ===== MAP =====
     loadMap(map)
@@ -84,22 +93,51 @@ export function initEditor(snapshot) {
 
             /**
              * =====================================================
-             * USERS / ROLES (🔥 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ)
+             * USERS / ROLES - КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ
              * =====================================================
              */
             case 'room-users': {
+                console.log('👥 Received room-users:', msg.users.map(u => ({ id: u.id, role: u.role })))
+
+                // 🔥 Получаем текущий userId из store
+                const currentUserId = getState().userId
+                console.log('👤 Current user ID from store:', currentUserId)
+                console.log('🎭 Current role from store:', getState().role)
+
+                // Обновляем глобальный список пользователей
+                const newUsers = new Map()
+                msg.users.forEach(u => newUsers.set(u.id, u))
                 users.clear()
-                msg.users.forEach(u => users.set(u.id, u))
+                newUsers.forEach((v, k) => users.set(k, v))
 
-                // обновляем список пользователей в UI
-                setUsers(new Map(users))
+                // 🔥 Обновляем UI состояние (список пользователей)
+                setUsers(newUsers)
 
-                // 🔑 ЕСЛИ ЭТО МЫ — ОБНОВЛЯЕМ РОЛЬ МГНОВЕННО
-                const state = getState()
-                const me = msg.users.find(u => u.id === state.userId)
+                // 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Находим СЕБЯ в списке и ОБНОВЛЯЕМ РОЛЬ
+                const meInList = msg.users.find(u => u.id === currentUserId)
+                if (meInList) {
+                    console.log('✅ Found myself in users list:', {
+                        myId: currentUserId,
+                        myCurrentRole: getState().role,
+                        myNewRole: meInList.role,
+                        shouldUpdate: meInList.role !== getState().role
+                    })
 
-                if (me && me.role !== state.role) {
-                    setState({ role: me.role })
+                    // 🔥 ВСЕГДА обновляем роль, даже если кажется, что она не изменилась
+                    // Это нужно, потому что при входе в комнату мы можем получить устаревшую роль
+                    if (meInList.role !== getState().role) {
+                        console.log(`🔄 My role changed from "${getState().role}" to "${meInList.role}"`)
+                        setState({ role: meInList.role })
+                    } else {
+                        console.log(`⚡ My role is already "${meInList.role}", forcing UI update`)
+                        // 🔥 Даже если роль не изменилась, заставляем UI обновиться
+                        setState({ role: meInList.role })
+                    }
+                } else {
+                    console.error('❌ CRITICAL: Could not find myself in users list!', {
+                        myId: currentUserId,
+                        users: msg.users.map(u => ({ id: u.id, role: u.role }))
+                    })
                 }
                 break
             }
@@ -139,6 +177,15 @@ export function initEditor(snapshot) {
                         t: performance.now()
                     })
                 }
+                break
+
+            /**
+             * =====================================================
+             * ROLE SET RESPONSE
+             * =====================================================
+             */
+            case 'role-set-response':
+                console.log('✅ Role set response:', msg)
                 break
         }
     })

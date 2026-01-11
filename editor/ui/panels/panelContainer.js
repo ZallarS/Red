@@ -81,6 +81,8 @@ export function createPanelContainer(side) {
     closeBtn.onclick = () => toggle(false)
     edge.onclick = () => toggle(true)
 
+    let cleanupFunction = null
+
     function render(state) {
         const panelState = state.panels[side]
         const module = getPanelModule(panelState.active)
@@ -92,12 +94,47 @@ export function createPanelContainer(side) {
         if (!module) return
 
         title.textContent = module.title
+
+        // 🔥 ОЧИЩАЕМ ПРЕДЫДУЩИЙ РЕНДЕР
+        if (cleanupFunction) {
+            console.log(`🧹 Cleaning up previous ${side} panel render`)
+            cleanupFunction()
+            cleanupFunction = null
+        }
+
         content.innerHTML = ''
-        module.render(content)
+
+        // 🔥 РЕНДЕРИМ И СОХРАНЯЕМ ФУНКЦИЮ ОЧИСТКИ
+        const cleanup = module.render(content)
+        if (typeof cleanup === 'function') {
+            cleanupFunction = cleanup
+        }
     }
 
-    subscribe(render)
+    // 🔥 ВЕШАЕМ ПОДПИСКУ
+    const unsubscribeStore = subscribe(render)
+
+    // 🔥 ОЧИСТКА ПРИ УДАЛЕНИИ КОНТЕЙНЕРА
+    const cleanupContainer = () => {
+        console.log(`🧹 Cleaning up ${side} panel container`)
+        if (cleanupFunction) {
+            cleanupFunction()
+            cleanupFunction = null
+        }
+        if (unsubscribeStore) {
+            unsubscribeStore()
+        }
+        if (root.parentNode) {
+            root.parentNode.removeChild(root)
+        }
+        if (edge.parentNode) {
+            edge.parentNode.removeChild(edge)
+        }
+    }
 
     document.body.appendChild(root)
     document.body.appendChild(edge)
+
+    // 🔥 ВОЗВРАЩАЕМ ФУНКЦИЮ ДЛЯ ОЧИСТКИ (опционально)
+    return cleanupContainer
 }

@@ -1,5 +1,3 @@
-// editor/drawing.js
-
 import { screenToWorld } from './camera.js'
 import { TILE_SIZE } from './map.js'
 import { createSetTileAction, applyAction } from './actions.js'
@@ -87,6 +85,7 @@ export function initDrawing(canvas, getState) {
 
     function setMyId(id) {
         myId = id
+        console.log('Drawing: User ID set to:', id) // 🔥 ДЕБАГ
     }
 
     function sendCursor(e) {
