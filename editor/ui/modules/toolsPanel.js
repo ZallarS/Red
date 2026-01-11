@@ -11,6 +11,9 @@ registerPanelModule('tools', {
         container.style.gap = '12px'
         container.style.padding = '8px'
 
+        // Массив для хранения всех кнопок
+        const buttons = []
+
         function createToolButton(label, icon, onClick, isActive) {
             const button = document.createElement('button')
             button.className = 'tool-button'
@@ -114,9 +117,7 @@ registerPanelModule('tools', {
 
             // Click эффект
             button.addEventListener('mousedown', () => {
-                if (!isActive()) {
-                    button.style.transform = 'scale(0.98)'
-                }
+                button.style.transform = 'scale(0.98)'
             })
 
             button.addEventListener('mouseup', () => {
@@ -126,70 +127,56 @@ registerPanelModule('tools', {
             button.addEventListener('click', (e) => {
                 e.stopPropagation()
                 onClick()
-                // Немедленное обновление стилей после клика
-                setTimeout(updateActive, 10)
+                // Немедленное обновление всех кнопок
+                setTimeout(updateAllButtons, 0)
             })
 
             // Начальное состояние
             updateActive()
 
-            return {
-                button,
-                updateActive,
-                getState: () => ({
-                    isActive: isActive(),
-                    label,
-                    icon
-                })
-            }
+            // Сохраняем кнопку в массив
+            buttons.push({ button, updateActive, label })
+
+            return button
         }
 
-        // Создаем кнопки с улучшенной логикой определения активного состояния
-        const drawBtn = createToolButton('Рисовать', '✏',
+        // Создаем кнопки
+        container.appendChild(createToolButton('Рисовать', '✏',
             () => setState({ tool: 'draw' }),
             () => getState().tool === 'draw'
-        )
+        ))
 
-        const eraseBtn = createToolButton('Стереть', '🧽',
+        container.appendChild(createToolButton('Стереть', '🧽',
             () => setState({ tool: 'erase' }),
             () => getState().tool === 'erase'
-        )
+        ))
 
-        const gridBtn = createToolButton('Сетка', '⬚',
+        container.appendChild(createToolButton('Сетка', '⬚',
             () => setState({ grid: !getState().grid }),
             () => getState().grid
-        )
+        ))
 
-        const snapBtn = createToolButton('Привязка', '🧲',
+        container.appendChild(createToolButton('Привязка', '🧲',
             () => setState({ snapping: !getState().snapping }),
             () => getState().snapping
-        )
-
-        container.appendChild(drawBtn.button)
-        container.appendChild(eraseBtn.button)
-        container.appendChild(gridBtn.button)
-        container.appendChild(snapBtn.button)
+        ))
 
         el.appendChild(container)
 
-        // Подписка на изменения состояния с дебаунсингом
-        let updateTimeout = null
-        const updateAllButtons = () => {
-            if (updateTimeout) clearTimeout(updateTimeout)
-            updateTimeout = setTimeout(() => {
-                drawBtn.updateActive()
-                eraseBtn.updateActive()
-                gridBtn.updateActive()
-                snapBtn.updateActive()
-                updateTimeout = null
-            }, 10)
+        // Функция для обновления всех кнопок
+        function updateAllButtons() {
+            buttons.forEach(btn => {
+                btn.updateActive()
+            })
         }
 
-        const unsubscribe = subscribe(updateAllButtons)
+        // Подписка на изменения состояния
+        const unsubscribe = subscribe(() => {
+            requestAnimationFrame(updateAllButtons)
+        })
 
         // Возвращаем функцию очистки
         return () => {
-            if (updateTimeout) clearTimeout(updateTimeout)
             if (unsubscribe) unsubscribe()
         }
     }

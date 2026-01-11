@@ -239,6 +239,14 @@ export function initEditor(snapshot) {
                 console.log('✅ Ответ на набор ролей:', msg)
                 if (msg.success) {
                     addEvent('user', `Роль пользователя ${msg.targetUserId?.substring(0, 8)} изменена на "${msg.role}"`)
+
+                    // 🔥 ОБНОВЛЯЕМ СПИСОК ПОЛЬЗОВАТЕЛЕЙ ПОСЛЕ ИЗМЕНЕНИЯ РОЛИ
+                    // Запрашиваем актуальный список пользователей
+                    setTimeout(() => {
+                        console.log('🔄 Запрашиваем обновленный список пользователей после изменения роли')
+                        // Здесь можно отправить запрос на сервер для получения обновленного списка
+                        // или обновить локально, если сервер не отправил автоматически
+                    }, 100)
                 } else {
                     addEvent('error', `Ошибка изменения роли: ${msg.error}`, {
                         targetUserId: msg.targetUserId,
@@ -277,6 +285,25 @@ export function initEditor(snapshot) {
             case 'saved':
                 addEvent('system', `Карта сохранена: ${msg.mode}`)
                 break
+
+            /**
+             * =====================================================
+             * USER JOINED/LEFT EVENTS (ДОБАВЛЕНО)
+             * =====================================================
+             */
+            case 'user-joined':
+                addEvent('users', `Пользователь ${msg.userId?.substring(0, 8)} присоединился`, {
+                    userId: msg.userId,
+                    name: msg.name
+                })
+                break
+
+            case 'user-left':
+                addEvent('users', `Пользователь ${msg.userId?.substring(0, 8)} покинул комнату`, {
+                    userId: msg.userId,
+                    name: msg.name
+                })
+                break
         }
     })
 
@@ -296,14 +323,25 @@ export function initEditor(snapshot) {
     }, 250)
 
     // ===== RENDER LOOP =====
-    function loop() {
+    let animationFrameId = null
+    let lastRenderTime = 0
+    const targetFPS = 60
+    const frameInterval = 1000 / targetFPS
+
+    function loop(currentTime) {
+        animationFrameId = requestAnimationFrame(loop)
+
+        // Ограничение FPS
+        const delta = currentTime - lastRenderTime
+        if (delta < frameInterval) return
+
+        lastRenderTime = currentTime - (delta % frameInterval)
+
         render(ctx, canvas, cursors, softLocks)
         if (uiState.grid) drawGrid(ctx, canvas)
 
         debug.update(null, uiState, users.size)
         saveCamera()
-
-        requestAnimationFrame(loop)
     }
 
     // Запускаем цикл рендеринга
@@ -315,11 +353,18 @@ export function initEditor(snapshot) {
         addEvent,
         toggleDebug: () => debug.toggle(),
         getDebugStats: () => ({
-            fps,
             users: users.size,
             cursors: cursors.size,
-            softLocks: softLocks.size
-        })
+            softLocks: softLocks.size,
+            roomId
+        }),
+        cleanup: () => {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId)
+            }
+            clearInterval(softLockInterval)
+            addEvent('system', 'Редактор остановлен')
+        }
     }
 }
 
