@@ -1,8 +1,7 @@
 import { getState, setState, subscribe } from '../store.js'
-import { registerPanelModule } from '../panels/panelRegistry.js'
 import { setUserRole } from '../../actions.js'
 
-// ===== ADAPTER (для editorCore.js) =====
+// ===== ADAPTER =====
 export function setUsers(users) {
     if (!users) return
 
@@ -14,219 +13,93 @@ export function setUsers(users) {
                 : []
 
     console.log('📊 Обновление пользователей в магазине:', list.map(u => ({ id: u.id, role: u.role })))
-
-    // 🔥 КРИТИЧНО: Всегда обновляем пользователей, даже если список кажется таким же
     setState({ users: list })
 }
 
-// ===== PANEL MODULE =====
-registerPanelModule('users', {
+// Регистрируем модуль в глобальном реестре
+if (!window.__canvasverse_panelModules) {
+    window.__canvasverse_panelModules = new Map()
+}
+
+window.__canvasverse_panelModules.set('users', {
     title: 'Пользователи',
 
     render(container) {
-        container.innerHTML = ''
+        console.log('👥 Рендерим панель пользователей')
 
-        const styles = document.createElement('style')
-        styles.textContent = `
-            .users-list {
-                display: flex;
-                flex-direction: column;
-                gap: 8px;
-            }
-            
-            .user-row {
-                background: #1a1a1a;
-                border: 1px solid #222;
-                border-radius: 8px;
-                padding: 12px;
-                transition: all 0.2s ease;
-            }
-            
-            .user-row:hover {
-                background: #222;
-                border-color: #333;
-            }
-            
-            .user-row-you {
-                border-color: #4a9eff;
-                background: rgba(74, 158, 255, 0.1);
-            }
-            
-            .user-info {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                margin-bottom: 8px;
-            }
-            
-            .user-color {
-                width: 16px;
-                height: 16px;
-                border-radius: 50%;
-                border: 2px solid #333;
-            }
-            
-            .user-name {
-                color: #fff;
-                font-size: 14px;
-                font-weight: 500;
-            }
-            
-            .user-id {
-                color: #888;
-                font-size: 11px;
-                font-family: 'JetBrains Mono', monospace;
-                margin-top: 2px;
-            }
-            
-            .user-role-container {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-            }
-            
-            .role-badge {
-                padding: 4px 8px;
-                border-radius: 4px;
-                font-size: 11px;
-                font-weight: 600;
-                text-transform: uppercase;
-            }
-            
-            .role-admin {
-                background: rgba(224, 180, 0, 0.1);
-                color: #e0b400;
-                border: 1px solid rgba(224, 180, 0, 0.3);
-            }
-            
-            .role-editor {
-                background: rgba(74, 158, 255, 0.1);
-                color: #4a9eff;
-                border: 1px solid rgba(74, 158, 255, 0.3);
-            }
-            
-            .role-viewer {
-                background: rgba(136, 136, 136, 0.1);
-                color: #888;
-                border: 1px solid rgba(136, 136, 136, 0.3);
-            }
-            
-            .role-select {
-                background: #2a2a2a;
-                color: #fff;
-                border: 1px solid #333;
-                border-radius: 4px;
-                padding: 6px 10px;
-                font-size: 12px;
-                font-family: 'Inter', sans-serif;
-                cursor: pointer;
-                min-width: 90px;
-                transition: all 0.2s ease;
-            }
-            
-            .role-select:focus {
-                border-color: #4a9eff;
-                outline: none;
-            }
-            
-            .role-select option {
-                background: #0f0f0f;
-                color: #fff;
-            }
-            
-            .you-badge {
-                background: rgba(74, 158, 255, 0.2);
-                color: #4a9eff;
-                padding: 2px 6px;
-                border-radius: 4px;
-                font-size: 10px;
-                font-weight: 600;
-                margin-left: 8px;
-            }
-            
-            .empty-state {
-                text-align: center;
-                padding: 40px 20px;
-                color: #666;
-            }
-            
-            .empty-state-icon {
-                font-size: 36px;
-                margin-bottom: 12px;
-                opacity: 0.5;
-            }
-            
-            .empty-state-text {
-                font-size: 14px;
-                line-height: 1.5;
-            }
+        const panel = document.createElement('div')
+        panel.className = 'users-panel'
+
+        const header = document.createElement('div')
+        header.style.cssText = `
+            padding: 16px;
+            border-bottom: 1px solid #222;
+            background: #1a1a1a;
         `
-        container.appendChild(styles)
 
-        // Создаем основные элементы
-        const listEl = document.createElement('div')
-        listEl.className = 'users-list'
+        const title = document.createElement('div')
+        title.textContent = 'Пользователи'
+        title.style.cssText = `
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+        `
 
-        container.appendChild(listEl)
+        header.appendChild(title)
+        panel.appendChild(header)
 
-        // Переменная для хранения предыдущего состояния
+        const listContainer = document.createElement('div')
+        listContainer.className = 'users-list'
+        listContainer.style.cssText = `
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+        `
+
+        panel.appendChild(listContainer)
+        container.appendChild(panel)
+
         let prevState = null
 
-        // Основная функция рендеринга
-        function renderUsers() {
+        function renderUsersList() {
             const state = getState()
             const users = state.users || []
             const myId = state.userId
             const myRole = state.role
 
-            // 🔥 Проверяем, изменилось ли состояние
+            // Проверяем, изменилось ли состояние
             const stateChanged =
                 !prevState ||
                 prevState.users !== users ||
                 prevState.userId !== myId ||
-                prevState.role !== myRole ||
-                JSON.stringify(users.map(u => ({ id: u.id, role: u.role }))) !==
-                JSON.stringify((prevState.users || []).map(u => ({ id: u.id, role: u.role })))
+                prevState.role !== myRole
 
-            if (!stateChanged) {
-                console.log('⚡ Панель пользователей: состояние не изменено, рендеринг пропущен')
-                return
-            }
+            if (!stateChanged) return
 
-            prevState = {
-                users: [...users],
-                userId: myId,
-                role: myRole
-            }
-
-            console.log('🔄 Панель пользователей рендеринга:', {
-                myId,
-                myRole,
-                usersCount: users.length,
-                amIAdmin: myRole === 'admin'
-            })
-
-            listEl.innerHTML = ''
+            prevState = { users: [...users], userId: myId, role: myRole }
+            listContainer.innerHTML = ''
 
             if (users.length === 0) {
                 const emptyMsg = document.createElement('div')
-                emptyMsg.className = 'empty-state'
-                emptyMsg.innerHTML = `
-                    <div class="empty-state-icon">👤</div>
-                    <div class="empty-state-text">Нет активных пользователей</div>
+                emptyMsg.style.cssText = `
+                    text-align: center;
+                    padding: 40px 20px;
+                    color: #666;
                 `
-                listEl.appendChild(emptyMsg)
+                emptyMsg.innerHTML = `
+                    <div style="font-size: 36px; margin-bottom: 12px; opacity: 0.5">👤</div>
+                    <div>Нет активных пользователей</div>
+                `
+                listContainer.appendChild(emptyMsg)
                 return
             }
 
             users.forEach(user => {
                 const row = document.createElement('div')
                 row.className = 'user-row'
-                if (user.id === myId) {
-                    row.classList.add('user-row-you')
-                }
+                if (user.id === myId) row.classList.add('user-row-you')
 
-                // User info
+                // Информация о пользователе
                 const userInfo = document.createElement('div')
                 userInfo.className = 'user-info'
 
@@ -243,17 +116,18 @@ registerPanelModule('users', {
 
                 const id = document.createElement('div')
                 id.className = 'user-id'
-                id.textContent = `ID: ${user.id.substring(0, 8)}...`
+                id.textContent = `ID: ${user.id?.substring(0, 8) || 'unknown'}...`
 
                 nameContainer.appendChild(name)
                 nameContainer.appendChild(id)
                 userInfo.appendChild(color)
                 userInfo.appendChild(nameContainer)
 
-                // Role section
+                // Блок роли
                 const roleContainer = document.createElement('div')
                 roleContainer.className = 'user-role-container'
 
+                // Если это текущий пользователь, показываем бейдж
                 if (user.id === myId) {
                     const youBadge = document.createElement('span')
                     youBadge.className = 'you-badge'
@@ -261,33 +135,33 @@ registerPanelModule('users', {
                     name.appendChild(youBadge)
                 }
 
-                // 👑 СЕЛЕКТОР — ТОЛЬКО ЕСЛИ МЫ АДМИН И ЭТО НЕ МЫ
+                // Если мы админ и это не мы - показываем селектор ролей
                 if (myRole === 'admin' && user.id !== myId) {
-                    console.log(`✅ Отображение селектора для пользователя ${user.id} Потому что я ${myRole}`)
-
                     const select = document.createElement('select')
                     select.className = 'role-select'
                     select.dataset.userId = user.id
 
-                    const roles = ['admin', 'editor', 'viewer']
+                    const roles = [
+                        { value: 'admin', label: 'Админ' },
+                        { value: 'editor', label: 'Редактор' },
+                        { value: 'viewer', label: 'Наблюдатель' }
+                    ]
+
                     roles.forEach(role => {
-                        const opt = document.createElement('option')
-                        opt.value = role
-                        opt.textContent = role === 'admin' ? 'Админ' :
-                            role === 'editor' ? 'Редактор' : 'Наблюдатель'
-                        if (role === user.role) opt.selected = true
-                        select.appendChild(opt)
+                        const option = document.createElement('option')
+                        option.value = role.value
+                        option.textContent = role.label
+                        if (role.value === user.role) option.selected = true
+                        select.appendChild(option)
                     })
 
-                    select.onchange = () => {
-                        console.log(`📤 Изменение роли для ${user.id} для ${select.value}`)
+                    select.addEventListener('change', () => {
+                        console.log(`📤 Изменение роли для ${user.id} на ${select.value}`)
                         setUserRole(user.id, select.value)
-                    }
+                    })
 
                     roleContainer.appendChild(select)
                 } else {
-                    console.log(`📝 Отображение текста роли для пользователя ${user.id}: ${user.role}`)
-
                     // Просто показываем роль
                     const roleBadge = document.createElement('div')
                     roleBadge.className = `role-badge role-${user.role || 'viewer'}`
@@ -305,32 +179,18 @@ registerPanelModule('users', {
 
                 row.appendChild(userInfo)
                 row.appendChild(roleContainer)
-                listEl.appendChild(row)
+                listContainer.appendChild(row)
             })
         }
 
-        // Первичный рендер
-        renderUsers()
+        // Первоначальный рендеринг
+        renderUsersList()
 
-        // 🔥 ПОДПИСКА НА ИЗМЕНЕНИЯ ВСЕГО STATE
-        const unsubscribe = subscribe(() => {
-            console.log('📢 Обновлено хранилище, проверяется, не нуждается ли панель пользователей в повторном отображении')
-            renderUsers()
-        })
+        // Подписываемся на изменения
+        const unsubscribe = subscribe(renderUsersList)
 
-        // Возвращаем функцию очистки
         return () => {
-            console.log('🧹 Очистка подписки на панель пользователей')
             if (unsubscribe) unsubscribe()
-        }
-    }
-})
-
-// 🔥 Гарантируем, что панель users активна
-setState({
-    panels: {
-        right: {
-            active: 'users'
         }
     }
 })

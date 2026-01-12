@@ -1,181 +1,98 @@
 import { setState, getState, subscribe } from '../store.js'
-import { registerPanelModule } from '../panels/panelRegistry.js'
 
-registerPanelModule('tools', {
+// Регистрируем модуль в глобальном реестре
+if (!window.__canvasverse_panelModules) {
+    window.__canvasverse_panelModules = new Map()
+}
+
+window.__canvasverse_panelModules.set('tools', {
     title: 'Инструменты',
 
     render(el) {
+        console.log('🎨 Рендерим панель инструментов')
+
         const container = document.createElement('div')
-        container.style.display = 'grid'
-        container.style.gridTemplateColumns = '1fr 1fr'
-        container.style.gap = '12px'
-        container.style.padding = '8px'
+        container.className = 'tools-panel-container'
 
-        // Массив для хранения всех кнопок
-        const buttons = []
+        // Создаем инструменты
+        const tools = [
+            { id: 'draw', label: 'Рисовать', icon: '✏', isActive: () => getState().tool === 'draw' },
+            { id: 'erase', label: 'Стереть', icon: '🧽', isActive: () => getState().tool === 'erase' },
+            { id: 'grid', label: 'Сетка', icon: '⬚', isActive: () => getState().grid },
+            { id: 'snapping', label: 'Привязка', icon: '🧲', isActive: () => getState().snapping }
+        ]
 
-        function createToolButton(label, icon, onClick, isActive) {
+        tools.forEach(tool => {
             const button = document.createElement('button')
             button.className = 'tool-button'
-            button.setAttribute('aria-label', label)
+            button.title = tool.label
 
-            const iconSpan = document.createElement('span')
-            iconSpan.textContent = icon
-            iconSpan.style.fontSize = '20px'
-            iconSpan.style.marginBottom = '8px'
-            iconSpan.style.display = 'block'
-            iconSpan.style.transition = 'color 0.2s ease'
-            iconSpan.dataset.role = 'icon'
+            const icon = document.createElement('div')
+            icon.className = 'tool-icon'
+            icon.textContent = tool.icon
 
-            const labelSpan = document.createElement('span')
-            labelSpan.textContent = label
-            labelSpan.style.fontSize = '12px'
-            labelSpan.style.transition = 'color 0.2s ease'
-            labelSpan.dataset.role = 'label'
+            const label = document.createElement('div')
+            label.className = 'tool-label'
+            label.textContent = tool.label
 
-            const content = document.createElement('div')
-            content.style.display = 'flex'
-            content.style.flexDirection = 'column'
-            content.style.alignItems = 'center'
-            content.style.justifyContent = 'center'
-            content.style.height = '100%'
-            content.style.gap = '4px'
+            button.appendChild(icon)
+            button.appendChild(label)
 
-            content.appendChild(iconSpan)
-            content.appendChild(labelSpan)
-            button.appendChild(content)
+            // Обработчик клика
+            button.addEventListener('click', () => {
+                console.log(`🛠️ Выбран инструмент: ${tool.label}`)
 
-            // Базовые стили
-            Object.assign(button.style, {
-                background: '#1a1a1a',
-                border: '2px solid #222',
-                borderRadius: '8px',
-                color: '#fff',
-                fontFamily: "'Inter', sans-serif",
-                fontSize: '14px',
-                cursor: 'pointer',
-                padding: '16px 8px',
-                transition: 'all 0.2s ease',
-                minHeight: '80px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                outline: 'none',
-                position: 'relative'
+                if (tool.id === 'draw' || tool.id === 'erase') {
+                    setState({ tool: tool.id })
+                } else if (tool.id === 'grid') {
+                    setState({ grid: !getState().grid })
+                } else if (tool.id === 'snapping') {
+                    setState({ snapping: !getState().snapping })
+                }
             })
 
-            // Функция обновления активного состояния
-            const updateActive = () => {
-                const active = isActive()
-                const isDrawOrErase = label === 'Рисовать' || label === 'Стереть'
+            // Функция обновления состояния
+            const updateButtonState = () => {
+                const active = tool.isActive()
+                button.classList.toggle('active', active)
 
                 if (active) {
-                    // АКТИВНОЕ состояние
-                    if (isDrawOrErase) {
-                        // Для инструментов рисования - синий контур
-                        button.style.background = '#1a1a1a'
-                        button.style.borderColor = '#4a9eff'
-                        button.style.boxShadow = '0 0 0 1px #4a9eff inset'
-                        iconSpan.style.color = '#4a9eff'
-                        labelSpan.style.color = '#4a9eff'
-                    } else {
-                        // Для переключателей (сетка/привязка) - синяя заливка
+                    icon.style.color = '#4a9eff'
+                    label.style.color = '#4a9eff'
+                    if (tool.id === 'grid' || tool.id === 'snapping') {
                         button.style.background = '#4a9eff'
-                        button.style.borderColor = '#4a9eff'
-                        button.style.boxShadow = 'none'
-                        iconSpan.style.color = '#fff'
-                        labelSpan.style.color = '#fff'
+                        icon.style.color = '#fff'
+                        label.style.color = '#fff'
                     }
                 } else {
-                    // НЕАКТИВНОЕ состояние
+                    icon.style.color = '#888'
+                    label.style.color = '#888'
                     button.style.background = '#1a1a1a'
-                    button.style.borderColor = '#222'
-                    button.style.boxShadow = 'none'
-                    iconSpan.style.color = '#888'
-                    labelSpan.style.color = '#888'
                 }
             }
 
-            // Hover эффекты
-            button.addEventListener('mouseenter', () => {
-                if (!isActive()) {
-                    button.style.background = '#222'
-                    button.style.borderColor = '#333'
-                    iconSpan.style.color = '#ccc'
-                    labelSpan.style.color = '#ccc'
-                }
-            })
-
-            button.addEventListener('mouseleave', () => {
-                if (!isActive()) {
-                    button.style.background = '#1a1a1a'
-                    button.style.borderColor = '#222'
-                    iconSpan.style.color = '#888'
-                    labelSpan.style.color = '#888'
-                }
-            })
-
-            // Click эффект
-            button.addEventListener('mousedown', () => {
-                button.style.transform = 'scale(0.98)'
-            })
-
-            button.addEventListener('mouseup', () => {
-                button.style.transform = 'scale(1)'
-            })
-
-            button.addEventListener('click', (e) => {
-                e.stopPropagation()
-                onClick()
-                // Немедленное обновление всех кнопок
-                setTimeout(updateAllButtons, 0)
-            })
-
             // Начальное состояние
-            updateActive()
+            updateButtonState()
 
-            // Сохраняем кнопку в массив
-            buttons.push({ button, updateActive, label })
+            // Добавляем в контейнер
+            container.appendChild(button)
 
-            return button
-        }
-
-        // Создаем кнопки
-        container.appendChild(createToolButton('Рисовать', '✏',
-            () => setState({ tool: 'draw' }),
-            () => getState().tool === 'draw'
-        ))
-
-        container.appendChild(createToolButton('Стереть', '🧽',
-            () => setState({ tool: 'erase' }),
-            () => getState().tool === 'erase'
-        ))
-
-        container.appendChild(createToolButton('Сетка', '⬚',
-            () => setState({ grid: !getState().grid }),
-            () => getState().grid
-        ))
-
-        container.appendChild(createToolButton('Привязка', '🧲',
-            () => setState({ snapping: !getState().snapping }),
-            () => getState().snapping
-        ))
+            // Сохраняем функцию обновления
+            button._updateState = updateButtonState
+        })
 
         el.appendChild(container)
 
-        // Функция для обновления всех кнопок
-        function updateAllButtons() {
-            buttons.forEach(btn => {
-                btn.updateActive()
-            })
-        }
-
-        // Подписка на изменения состояния
+        // Подписываемся на изменения состояния
         const unsubscribe = subscribe(() => {
-            requestAnimationFrame(updateAllButtons)
+            // Обновляем все кнопки при изменении состояния
+            container.querySelectorAll('.tool-button').forEach(btn => {
+                if (btn._updateState) {
+                    btn._updateState()
+                }
+            })
         })
 
-        // Возвращаем функцию очистки
         return () => {
             if (unsubscribe) unsubscribe()
         }

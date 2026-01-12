@@ -1,5 +1,5 @@
 import { getStatus, getPing } from './ws.js'
-import { addEvent } from './ui/store.js'
+// 🔥 Убрали импорт addEvent
 
 export function createDebugOverlay(getData) {
     let enabled = localStorage.getItem('debug-overlay') === '1'
@@ -68,9 +68,10 @@ export function createDebugOverlay(getData) {
         document.body.appendChild(el)
         el.appendChild(statsEl)
 
-        // Добавляем событие о включении дебага
+        // 🔥 Убрано добавление события о включении дебага
+        // 🔥 Просто логируем в консоль
         if (enabled) {
-            addEvent('system', 'Дебаг-режим включен')
+            console.log('🔧 Дебаг-режим включен')
         }
 
         // Слушаем изменение размера левой панели для корректировки позиции
@@ -132,7 +133,7 @@ export function createDebugOverlay(getData) {
 ║ FPS:    ${fps.toString().padStart(3)} (${performanceStats.minFPS}-${performanceStats.maxFPS})
 ║ Avg:    ${Math.round(performanceStats.avgFPS).toString().padStart(3)}
 ╠════════════════════════════════╣
-║ WS:     ${getStatus().padEnd(15)}
+║ WS:     ${getStatus().padEnd(15)} 
 ║ RTT:    ${(getPing() ?? '-').toString().padStart(4)}ms
 ╠════════════════════════════════╣
 ║ Инструмент: ${(uiState?.tool || 'N/A').padEnd(8)}
@@ -144,16 +145,11 @@ export function createDebugOverlay(getData) {
         // Информация о роли и панелях
         if (uiState?.debug?.showSystem) {
             const activePanel = uiState?.panels?.right?.active || 'users'
-            const panelNames = {
-                'users': '👥 Пользователи',
-                'events': '📝 События'
-            }
 
             text += `
 ║ Роль:      ${uiState?.role?.padEnd(8)}
 ║ ID:        ${uiState?.userId ? uiState.userId.substring(0, 8) + '...' : 'N/A'.padEnd(11)}
-║ Панель:    ${panelNames[activePanel] || activePanel}
-║ Событий:   ${uiState?.debug?.events?.length || 0}/${uiState?.debug?.maxEvents || 50}`
+║ Панель:    Пользователи`
 
             // Состояние панелей
             const leftPanel = uiState?.panels?.left
@@ -187,8 +183,8 @@ export function createDebugOverlay(getData) {
 
         el.textContent = text
 
-        // Обновляем статистику - ИСПРАВЛЕНО: убрано повторное объявление now
-        const updateTime = new Date() // Исправлено: переименовано из 'now'
+        // Обновляем статистику
+        const updateTime = new Date()
         statsEl.textContent = `Обновлено: ${updateTime.toLocaleTimeString('ru-RU', {
             hour: '2-digit',
             minute: '2-digit',
@@ -210,15 +206,13 @@ export function createDebugOverlay(getData) {
                 el.style.display = enabled ? 'block' : 'none'
                 if (enabled) {
                     updateDebugPosition()
-                    addEvent('system', 'Дебаг-режим включен')
+                    console.log('🔧 Дебаг-режим включен')
                 } else {
-                    addEvent('system', 'Дебаг-режим выключен')
+                    console.log('🔧 Дебаг-режим выключен')
                 }
             }
         },
-        logEvent: function(category, message, data) {
-            addEvent(category, message, data)
-        },
+        // 🔥 Убрана функция logEvent
         isEnabled: () => enabled,
         setPosition: function(left, top) {
             if (el) {
@@ -228,24 +222,3 @@ export function createDebugOverlay(getData) {
         }
     }
 }
-
-// Глобальная функция для логгирования событий из любого места
-window.debugLog = function(category, message, data) {
-    addEvent(category, message, data)
-}
-
-// Автоматическое логирование важных событий
-window.addEventListener('error', (e) => {
-    addEvent('error', `Ошибка: ${e.message}`, {
-        filename: e.filename,
-        lineno: e.lineno,
-        colno: e.colno,
-        error: e.error?.toString()
-    })
-})
-
-window.addEventListener('unhandledrejection', (e) => {
-    addEvent('error', `Необработанный Promise rejection: ${e.reason}`, {
-        reason: e.reason?.toString()
-    })
-})
