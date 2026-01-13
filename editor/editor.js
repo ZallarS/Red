@@ -1,11 +1,14 @@
 import { getRoute, goToLobby } from './router.js'
 import { mountLobby, unmountLobby, onRoomCreated } from './lobby.js'
-import { connect, on, send, getStatus } from './ws.js'
+import { getNetworkManager, WS_PROTOCOL } from './network.js'
 import { initEditor } from './editorCore.js'
 import { createExitButton, removeExitButton, cleanupUI } from './ui/ui.js'
 
 let editorInstance = null
 let currentRoomId = null
+
+// Создаем экземпляр сетевого менеджера
+const networkManager = getNetworkManager()
 
 function startEditor(snapshot) {
     if (editorInstance) {
@@ -35,9 +38,12 @@ function stopEditor() {
         ctx.clearRect(0, 0, canvas.width, canvas.height)
     }
 
-    if (getStatus() === 'online' && currentRoomId) {
+    if (networkManager.getStatus() === 'online' && currentRoomId) {
         console.log(`📤 Отправляем запрос на выход из комнаты ${currentRoomId}`)
-        send({ type: 'room-leave', roomId: currentRoomId })
+        networkManager.send({
+            type: WS_PROTOCOL.ROOM_LEAVE,
+            roomId: currentRoomId
+        })
     }
 
     editorInstance = null
@@ -79,8 +85,8 @@ function handleRoute(event) {
             // Проверяем, есть ли пароль в деталях события
             const password = event?.detail?.password || ''
 
-            send({
-                type: 'room-join',
+            networkManager.send({
+                type: WS_PROTOCOL.ROOM_JOIN,
                 roomId: route.roomId,
                 password: password
             })
@@ -94,12 +100,12 @@ window.addEventListener('popstate', handleRoute)
 
 window.addEventListener('DOMContentLoaded', () => {
     console.log('🚀 Запуск CanvasVerse...')
-    connect()
+    networkManager.connect()
 
-    on('message', msg => {
-        if (msg.type === 'room-created') onRoomCreated(msg.roomId)
-        if (msg.type === 'room-snapshot') startEditor(msg)
-        if (msg.type === 'error') {
+    networkManager.on('message', msg => {
+        if (msg.type === WS_PROTOCOL.ROOM_CREATED) onRoomCreated(msg.roomId)
+        if (msg.type === WS_PROTOCOL.ROOM_SNAPSHOT) startEditor(msg)
+        if (msg.type === WS_PROTOCOL.ERROR) {
             alert(msg.message)
             history.pushState({}, '', '/')
             handleRoute()
@@ -117,5 +123,6 @@ window.CanvasVerse = {
         goToLobby()
     },
     getCurrentRoom: () => currentRoomId,
-    getEditorInstance: () => editorInstance
+    getEditorInstance: () => editorInstance,
+    getNetworkManager: () => networkManager
 }

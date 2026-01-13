@@ -2,8 +2,8 @@ import { screenToWorld } from './camera.js'
 import { TILE_SIZE } from './map.js'
 import { createSetTileAction, applyAction } from './actions.js'
 import { push } from './history.js'
-import { send, getStatus } from './ws.js'
-import { WS, ACTION } from './protocol.js'
+import { getNetworkManager, WS_PROTOCOL } from './network.js'
+import { ACTION } from './protocol.js'
 
 /**
  * ===== TOOL IMPLEMENTATIONS =====
@@ -13,6 +13,9 @@ function createBrushTool(getState) {
     const painted = new Set()
     const actions = []
     let lastCell = null
+
+    // Получаем сетевой менеджер
+    const networkManager = getNetworkManager()
 
     // Добавляем функцию для расчета расстояния между точками
     function distance(x1, y1, x2, y2) {
@@ -51,7 +54,6 @@ function createBrushTool(getState) {
         const { tool, snapping } = getState()
 
         // ВАЖНОЕ ИСПРАВЛЕНИЕ: Используем Math.floor вместо Math.round
-        // Это гарантирует, что курсор всегда будет в пределах одной ячейки
         let x, y
 
         if (snapping) {
@@ -60,7 +62,6 @@ function createBrushTool(getState) {
             y = Math.floor((worldPos.y + TILE_SIZE / 2) / TILE_SIZE)
         } else {
             // Без привязки - используем точное положение курсора
-            // Math.floor гарантирует, что курсор всегда в той ячейке, над которой находится
             x = Math.floor(worldPos.x / TILE_SIZE)
             y = Math.floor(worldPos.y / TILE_SIZE)
         }
@@ -163,9 +164,9 @@ function createBrushTool(getState) {
 
             push(brush)
 
-            if (ctx.ready && getStatus() === 'online') {
-                send({
-                    type: WS.ACTION,
+            if (ctx.ready && networkManager.getStatus() === 'online') {
+                networkManager.send({
+                    type: WS_PROTOCOL.ACTION,
                     action: brush
                 })
             }
@@ -188,6 +189,7 @@ export function initDrawing(canvas, getState) {
     let mouseMoved = false
 
     const brushTool = createBrushTool(getState)
+    const networkManager = getNetworkManager()
 
     function setReady(v) {
         ready = v
@@ -199,13 +201,13 @@ export function initDrawing(canvas, getState) {
     }
 
     function sendCursor(e) {
-        if (!myId || getStatus() !== 'online') return
+        if (!myId || networkManager.getStatus() !== 'online') return
 
         const r = canvas.getBoundingClientRect()
 
         // Отправляем точные координаты курсора
-        send({
-            type: WS.CURSOR,
+        networkManager.send({
+            type: WS_PROTOCOL.CURSOR,
             x: e.clientX - r.left,
             y: e.clientY - r.top,
             painting: drawing

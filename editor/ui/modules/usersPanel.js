@@ -2,7 +2,7 @@
 import { PanelBase, PanelFactory } from '../panelBase.js'
 import { getState, subscribe } from '../store.js'
 import { setUserRole } from '../../actions.js'
-import { ROLE_META, MESSAGES } from '../../constants.js'
+import { ROLE_META, MESSAGES  } from '../../config.js'
 
 /**
  * Панель пользователей (исправленная версия)

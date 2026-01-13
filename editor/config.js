@@ -1,4 +1,7 @@
-// Константы проекта CanvasVerse
+// config.js
+// ================================
+// КОНФИГУРАЦИЯ ПРОЕКТА CANVASVERSE
+// ================================
 
 // Размеры и масштабирование
 export const TILE_SIZE = 32
@@ -18,7 +21,7 @@ export const COLORS = {
     success: '#20c997',
     warning: '#ffc107',
     error: '#ff4757',
-    owner: '#ff6b35', // Новый цвет для владельца
+    owner: '#ff6b35',
     admin: '#e0b400',
     editor: '#4a9eff',
     viewer: '#888'
@@ -26,7 +29,7 @@ export const COLORS = {
 
 // Роли пользователей
 export const ROLES = {
-    OWNER: 'owner',    // Новая роль владельца
+    OWNER: 'owner',
     ADMIN: 'admin',
     EDITOR: 'editor',
     VIEWER: 'viewer'
@@ -42,8 +45,8 @@ export const ROLE_META = {
         canManageUsers: true,
         canSave: true,
         canChangeSettings: true,
-        isImmune: true, // Иммунитет от изменений
-        canChangeOwnerRole: false // Нельзя изменить роль владельца
+        isImmune: true,
+        canChangeOwnerRole: false
     },
     admin: {
         label: 'Админ',
@@ -80,7 +83,7 @@ export const ROLE_META = {
     }
 }
 
-// Инструменты
+// Инструменты редактора
 export const TOOLS = {
     DRAW: 'draw',
     ERASE: 'erase',
@@ -102,18 +105,21 @@ export const WS_STATUS = {
     CONNECTING: 'connecting',
     ONLINE: 'online',
     OFFLINE: 'offline',
-    RECONNECTING: 'Переподключение...'
+    RECONNECTING: 'reconnecting'
 }
 
-// Лимиты
+// Лимиты системы
 export const LIMITS = {
     MAX_EVENTS: 50,
     MAX_USERS_PER_ROOM: 50,
     MAX_TILES: 10000,
-    AUTO_SAVE_DELAY: 3000 // 3 секунды
+    AUTO_SAVE_DELAY: 3000,
+    MAX_ROOM_NAME_LENGTH: 50,
+    MAX_ROOM_DESCRIPTION_LENGTH: 200,
+    MIN_PASSWORD_LENGTH: 4
 }
 
-// Клавиши горячих клавиш
+// Горячие клавиши
 export const HOTKEYS = {
     TOGGLE_DEBUG: { key: 'D', shift: true },
     RESET_DEBUG_POSITION: { key: 'Escape' },
@@ -121,7 +127,8 @@ export const HOTKEYS = {
     REDO: { key: 'Y', ctrl: true },
     SAVE: { key: 'S', ctrl: true },
     TOGGLE_GRID: { key: 'G' },
-    TOGGLE_SNAPPING: { key: 'S', shift: true }
+    TOGGLE_SNAPPING: { key: 'S', shift: true },
+    EXIT_LOBBY: { key: 'Escape' }
 }
 
 // Сообщения для UI
@@ -134,5 +141,78 @@ export const MESSAGES = {
     SAVING: 'Сохранение...',
     SAVED: 'Сохранено',
     ERROR_SAVING: 'Ошибка при сохранении',
-    OWNER_IMMUNE: 'Нельзя изменить роль владельца'
+    OWNER_IMMUNE: 'Нельзя изменить роль владельца',
+    ROOM_FULL: 'Комната заполнена',
+    INCORRECT_PASSWORD: 'Неверный пароль',
+    ROOM_PRIVATE: 'Эта комната приватная'
+}
+
+// Конфигурация WebSocket
+export const WS_CONFIG = {
+    URL: 'wss://lib31.ru/ws',
+    RECONNECT_INTERVAL: 3000,
+    MAX_RECONNECT_ATTEMPTS: 5,
+    PING_INTERVAL: 2000,
+    CONNECTION_TIMEOUT: 15000
+}
+
+// Конфигурация панелей
+export const PANEL_CONFIG = {
+    WIDTH: 320,
+    MIN_WIDTH: 280,
+    MAX_WIDTH: 400,
+    TOGGLE_WIDTH: 20,
+    ANIMATION_DURATION: 200
+}
+
+// Конфигурация камеры
+export const CAMERA_CONFIG = {
+    SMOOTHNESS: 0.1,
+    MAX_SPEED: 10,
+    ZOOM_SENSITIVITY: 0.001
+}
+
+// Конфигурация сетки
+export const GRID_CONFIG = {
+    FADE_START: 1.0,
+    FADE_END: 0.5,
+    COLOR: '#222',
+    LINE_WIDTH: 1
+}
+
+// Конфигурация рисования
+export const DRAWING_CONFIG = {
+    SOFT_LOCK_RADIUS: 48,
+    SOFT_LOCK_TTL: 500,
+    CURSOR_SIZE: 4,
+    LINE_SMOOTHING: true
+}
+
+// Конфигурация комнат
+export const ROOM_CONFIG = {
+    DEFAULT_SETTINGS: {
+        name: 'Новая комната',
+        description: '',
+        visibility: 'public',
+        password: '',
+        maxUsers: 20,
+        allowGuests: true,
+        gridEnabled: true,
+        snapEnabled: true,
+        defaultRole: 'viewer'
+    },
+    VISIBILITY_OPTIONS: {
+        public: { label: 'Публичная', icon: '🌐', description: 'Любой может присоединиться' },
+        private: { label: 'Приватная', icon: '🔒', description: 'Только по приглашению' },
+        'password-protected': { label: 'С паролем', icon: '🔑', description: 'Требуется пароль' }
+    }
+}
+
+// Конфигурация отладки
+export const DEBUG_CONFIG = {
+    ENABLED_BY_DEFAULT: false,
+    UPDATE_INTERVAL: 1000,
+    SHOW_PERFORMANCE: true,
+    SHOW_NETWORK: true,
+    SHOW_SYSTEM: true
 }

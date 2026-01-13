@@ -1,5 +1,4 @@
-import { getStatus, getPing } from './ws.js'
-// 🔥 Убрали импорт addEvent
+import { getNetworkManager } from './network.js'
 
 export function createDebugOverlay(getData) {
     let enabled = localStorage.getItem('debug-overlay') === '1'
@@ -16,6 +15,8 @@ export function createDebugOverlay(getData) {
         frameCount: 0,
         totalFPS: 0
     }
+
+    const networkManager = getNetworkManager()
 
     function formatTime(ms) {
         const s = Math.floor(ms / 1000)
@@ -68,8 +69,6 @@ export function createDebugOverlay(getData) {
         document.body.appendChild(el)
         el.appendChild(statsEl)
 
-        // 🔥 Убрано добавление события о включении дебага
-        // 🔥 Просто логируем в консоль
         if (enabled) {
             console.log('🔧 Дебаг-режим включен')
         }
@@ -88,7 +87,7 @@ export function createDebugOverlay(getData) {
 
         // Если левая панель открыта (280px), сдвигаем дебаг-панель
         if (leftPanelOpen) {
-            el.style.left = '300px' // 280px (ширина панели) + 20px (отступ)
+            el.style.left = '300px'
         } else {
             el.style.left = '8px'
         }
@@ -117,7 +116,7 @@ export function createDebugOverlay(getData) {
         if (!enabled || !el) return
 
         frames++
-        const currentTime = performance.now() // Исправлено: переименовано из 'now'
+        const currentTime = performance.now()
         if (currentTime - lastTime >= 1000) {
             fps = frames
             frames = 0
@@ -133,8 +132,8 @@ export function createDebugOverlay(getData) {
 ║ FPS:    ${fps.toString().padStart(3)} (${performanceStats.minFPS}-${performanceStats.maxFPS})
 ║ Avg:    ${Math.round(performanceStats.avgFPS).toString().padStart(3)}
 ╠════════════════════════════════╣
-║ WS:     ${getStatus().padEnd(15)} 
-║ RTT:    ${(getPing() ?? '-').toString().padStart(4)}ms
+║ WS:     ${networkManager.getStatus().padEnd(15)} 
+║ RTT:    ${(networkManager.getPing() ?? '-').toString().padStart(4)}ms
 ╠════════════════════════════════╣
 ║ Инструмент: ${(uiState?.tool || 'N/A').padEnd(8)}
 ║ Пользоват.: ${(usersCount || 0).toString().padStart(3)}
@@ -212,7 +211,6 @@ export function createDebugOverlay(getData) {
                 }
             }
         },
-        // 🔥 Убрана функция logEvent
         isEnabled: () => enabled,
         setPosition: function(left, top) {
             if (el) {

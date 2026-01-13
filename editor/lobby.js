@@ -1,4 +1,4 @@
-import { send, on, off } from './ws.js'
+import { getNetworkManager, WS_PROTOCOL } from './network.js'
 import { ROOM_SETTINGS_META, ROOM_SETTINGS } from './roomSettings.js'
 
 let root = null
@@ -8,6 +8,9 @@ let listEl = null
 let requested = false
 let messageHandler = null
 let createPopup = null
+
+// Создаем экземпляр сетевого менеджера
+const networkManager = getNetworkManager()
 
 function ensureStyles() {
     // 🔥 Проверяем, не добавлены ли уже стили лобби
@@ -1268,8 +1271,8 @@ function createRoomPopup() {
 
             console.log('📤 Создание комнаты с настройками:', settings)
 
-            send({
-                type: 'room-create',
+            networkManager.send({
+                type: WS_PROTOCOL.ROOM_CREATE,
                 settings: settings
             })
 
@@ -1321,16 +1324,16 @@ function resetForm() {
 // 🔥 Выносим функцию обработки сообщений на уровень модуля
 function createMessageHandler() {
     return function(msg) {
-        if (msg.type === 'auth-ok' && !requested) {
+        if (msg.type === WS_PROTOCOL.AUTH_OK && !requested) {
             requested = true
-            send({ type: 'room-list' })
+            networkManager.send({ type: WS_PROTOCOL.ROOM_LIST })
         }
 
-        if (msg.type === 'room-list-response') {
+        if (msg.type === WS_PROTOCOL.ROOM_LIST_RESPONSE) {
             renderRooms(msg.rooms)
         }
 
-        if (msg.type === 'room-created') {
+        if (msg.type === WS_PROTOCOL.ROOM_CREATED) {
             console.log('✅ Комната создана:', msg.roomId)
             // Показываем уведомление
             if (root) {
@@ -1526,7 +1529,7 @@ export function unmountLobby() {
 
     // 🔥 Убираем обработчик сообщений
     if (messageHandler) {
-        off('message', messageHandler)
+        networkManager.off('message', messageHandler)
         messageHandler = null
     }
 
@@ -1674,7 +1677,7 @@ export function mountLobby() {
     // ===== WS EVENTS =====
     // 🔥 Создаем новый обработчик сообщений
     messageHandler = createMessageHandler()
-    on('message', messageHandler)
+    networkManager.on('message', messageHandler)
 
     // 🔥 ПРИНУДИТЕЛЬНО ЗАПРАШИВАЕМ СПИСОК КОМНАТ ПРИ МОНТИРОВАНИИ
     console.log('📡 Запрашиваем список комнат...')
@@ -1682,8 +1685,8 @@ export function mountLobby() {
     // 🔥 Проверяем соединение перед отправкой
     const checkConnection = () => {
         // Если соединение установлено, отправляем запрос
-        if (window.__canvasverse_ws_connected) {
-            send({ type: 'room-list' })
+        if (networkManager.getStatus() === 'online') {
+            networkManager.send({ type: WS_PROTOCOL.ROOM_LIST })
         } else {
             // Если соединение еще не установлено, ждем
             console.log('⏳ Ожидаем установки соединения...')

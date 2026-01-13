@@ -6,19 +6,18 @@ import { loadMap } from './map.js'
 import { initUI, cleanupUI } from './ui/ui.js'
 import { subscribe, getState, setState } from './ui/store.js'
 
-import { on, off } from './ws.js'
-import { WS } from './protocol.js'
+import { getNetworkManager, WS_PROTOCOL } from './network.js'
 
 import { createDebugOverlay } from './debug.js'
 import { initDrawing } from './drawing.js'
 import { applyAction } from './actions.js'
 import { initInput } from './input.js'
-import { loadSettingsToUI } from './roomSettings.js' // Добавляем импорт
+import { loadSettingsToUI } from './roomSettings.js'
 
 const CAMERA_KEY_PREFIX = 'editor-camera-room-'
 
 export function initEditor(snapshot) {
-    const { roomId, role, map, userId, settings } = snapshot // Добавляем settings
+    const { roomId, role, map, userId, settings } = snapshot
 
     console.log('🎮 Initializing editor:', { roomId, role, userId, settings })
 
@@ -35,6 +34,9 @@ export function initEditor(snapshot) {
     let uiCleanupFunction = null
 
     const CAMERA_KEY = CAMERA_KEY_PREFIX + roomId
+
+    // Получаем сетевой менеджер
+    const networkManager = getNetworkManager()
 
     function restoreCamera() {
         try {
@@ -78,7 +80,6 @@ export function initEditor(snapshot) {
     console.log('🎨 Пользовательский интерфейс инициализирован')
 
     // ===== НАСТРОЙКИ КОМНАТЫ =====
-    // Загружаем настройки комнаты в UI
     if (settings) {
         loadSettingsToUI(settings)
     }
@@ -88,7 +89,7 @@ export function initEditor(snapshot) {
         userId: userId,
         role: role,
         users: [],
-        roomSettings: settings || null // Сохраняем настройки в store
+        roomSettings: settings || null
     })
 
     console.log(`👤 Пользователь ${userId?.substring(0, 8)} вошёл с ролью ${role}`)
@@ -140,19 +141,18 @@ export function initEditor(snapshot) {
             }
 
             case 'role-set-response':
-                // Можно импортировать и вызвать handleRoleSetResponse из actions.js
                 console.log(`📥 Ответ на смену роли:`, msg)
                 if (!msg.success) {
                     alert(msg.error || 'Ошибка смены роли')
                 }
                 break;
 
-            case WS.ACTION:
+            case WS_PROTOCOL.ACTION:
                 console.log('🎯 Получено действие:', msg.action.type)
                 applyAction(msg.action)
                 break
 
-            case WS.CURSOR:
+            case WS_PROTOCOL.CURSOR:
                 cursors.set(msg.id, {
                     x: msg.x,
                     y: msg.y,
@@ -164,19 +164,17 @@ export function initEditor(snapshot) {
 
             case 'room-settings-changed':
                 console.log('⚙️ Настройки комнаты обновлены:', msg.settings)
-                // Обновляем настройки в UI
                 loadSettingsToUI(msg.settings)
-                // Обновляем в store
                 setState({ roomSettings: msg.settings })
                 break
 
-            case 'error':
+            case WS_PROTOCOL.ERROR:
                 console.error(`❌ Ошибка сервера: ${msg.message}`)
                 break
         }
     }
 
-    on('message', messageHandler)
+    networkManager.on('message', messageHandler)
 
     // ===== CLEANUP SOFT LOCKS =====
     softLockInterval = setInterval(() => {
@@ -220,7 +218,7 @@ export function initEditor(snapshot) {
 
         window.__canvasverse_uiInitialized = false
 
-        if (messageHandler) off('message', messageHandler)
+        if (messageHandler) networkManager.off('message', messageHandler)
         if (animationFrameId) cancelAnimationFrame(animationFrameId)
         if (softLockInterval) clearInterval(softLockInterval)
 
@@ -243,7 +241,7 @@ export function initEditor(snapshot) {
                 users: [],
                 userId: null,
                 role: 'viewer',
-                roomSettings: null, // Сбрасываем настройки комнаты
+                roomSettings: null,
                 panels: {
                     left: { open: true, active: 'tools' },
                     right: { open: true, active: 'users' }

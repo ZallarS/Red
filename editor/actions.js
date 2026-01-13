@@ -1,7 +1,7 @@
 import { getTile, setTile } from './map.js'
-import { ACTION, WS } from './protocol.js'
-import { send } from './ws.js'
-import { MESSAGES } from './constants.js'
+import { getNetworkManager, WS_PROTOCOL } from './network.js'
+import { ACTION } from './protocol.js'
+import { MESSAGES } from './config.js'
 
 /* ============================================================
    ===============  MAP / DRAW ACTIONS (OLD) ==================
@@ -64,8 +64,10 @@ export function revertAction(action) {
 export function setUserRole(targetUserId, role) {
     console.log(`📤 Запрос изменения на смену роли: ${targetUserId} -> ${role}`)
 
-    send({
-        type: WS.ROLE_SET,
+    const networkManager = getNetworkManager()
+
+    networkManager.send({
+        type: WS_PROTOCOL.ROLE_SET,
         targetUserId,
         role
     })

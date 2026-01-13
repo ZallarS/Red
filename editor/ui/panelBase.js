@@ -1,6 +1,6 @@
 // editor/ui/panelBase.js
 import { getState, subscribe } from './store.js'
-import { ROLE_META } from '../constants.js'
+import { ROLE_META } from '../config.js'
 
 /**
  * Базовый класс для всех панелей редактора
