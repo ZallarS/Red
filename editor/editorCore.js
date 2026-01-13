@@ -139,6 +139,14 @@ export function initEditor(snapshot) {
                 break
             }
 
+            case 'role-set-response':
+                // Можно импортировать и вызвать handleRoleSetResponse из actions.js
+                console.log(`📥 Ответ на смену роли:`, msg)
+                if (!msg.success) {
+                    alert(msg.error || 'Ошибка смены роли')
+                }
+                break;
+
             case WS.ACTION:
                 console.log('🎯 Получено действие:', msg.action.type)
                 applyAction(msg.action)

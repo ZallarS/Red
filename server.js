@@ -161,7 +161,7 @@ function applyRoomAction(room, action) {
 }
 
 // ===================== ROLES =====================
-const VALID_ROLES = new Set(['admin', 'editor', 'viewer'])
+const VALID_ROLES = new Set(['owner', 'admin', 'editor', 'viewer'])
 
 function isAdmin(room, userId) {
     return room.roles.get(userId) === 'admin'
@@ -233,14 +233,14 @@ wss.on('connection', ws => {
             const room = {
                 id: roomId,
                 map: new Map(),
-                roles: new Map([[userId, 'admin']]),
+                roles: new Map([[userId, 'owner']]), // Создатель становится владельцем
                 users: new Map(),
                 autosaveTimer: null,
                 settings: {
                     ...DEFAULT_ROOM_SETTINGS,
                     ...userSettings,
                     createdAt: Date.now(),
-                    owner: userId,
+                    owner: userId, // Сохраняем ID владельца
                     currentUsers: 1
                 }
             }
@@ -422,11 +422,61 @@ wss.on('connection', ws => {
         if (msg.type === 'role-set') {
             const { targetUserId, role } = msg
 
-            if (!isAdmin(room, userId)) {
+            // Проверяем, является ли текущий пользователь владельцем или админом
+            const currentUserRole = room.roles.get(userId)
+            const isOwner = currentUserRole === 'owner'
+            const isAdmin = currentUserRole === 'admin'
+
+            // Проверяем, является ли целевой пользователь владельцем
+            const targetUserRole = room.roles.get(targetUserId)
+            const isTargetOwner = targetUserRole === 'owner'
+
+            // Только владелец или админ может менять роли
+            if (!isOwner && !isAdmin) {
                 ws.send(JSON.stringify({
                     type: 'role-set-response',
                     success: false,
                     error: 'Not authorized'
+                }))
+                return
+            }
+
+            // Никто не может изменить роль владельца
+            if (isTargetOwner) {
+                ws.send(JSON.stringify({
+                    type: 'role-set-response',
+                    success: false,
+                    error: 'Cannot change owner role'
+                }))
+                return
+            }
+
+            // Админ не может назначать роль "owner"
+            if (isAdmin && role === 'owner') {
+                ws.send(JSON.stringify({
+                    type: 'role-set-response',
+                    success: false,
+                    error: 'Only owner can assign owner role'
+                }))
+                return
+            }
+
+            // Админ не может понизить другого админа до не-админа
+            if (isAdmin && targetUserRole === 'admin' && role !== 'admin') {
+                ws.send(JSON.stringify({
+                    type: 'role-set-response',
+                    success: false,
+                    error: 'Admin cannot demote other admin'
+                }))
+                return
+            }
+
+            // Владелец не может понизить сам себя
+            if (targetUserId === userId && role !== 'owner') {
+                ws.send(JSON.stringify({
+                    type: 'role-set-response',
+                    success: false,
+                    error: 'Owner cannot demote self'
                 }))
                 return
             }
@@ -447,29 +497,6 @@ wss.on('connection', ws => {
                     error: 'User not found'
                 }))
                 return
-            }
-
-            // 🛡️ ЗАПРЕТ САМОПОНИЖЕНИЯ АДМИНА
-            if (targetUserId === userId && role !== 'admin') {
-                ws.send(JSON.stringify({
-                    type: 'role-set-response',
-                    success: false,
-                    error: 'Cannot demote yourself from admin'
-                }))
-                return
-            }
-
-            // 🛡️ защита от снятия последнего админа
-            if (role !== 'admin' && room.roles.get(targetUserId) === 'admin') {
-                const admins = [...room.roles.values()].filter(r => r === 'admin')
-                if (admins.length <= 1) {
-                    ws.send(JSON.stringify({
-                        type: 'role-set-response',
-                        success: false,
-                        error: 'Cannot remove last admin'
-                    }))
-                    return
-                }
             }
 
             room.roles.set(targetUserId, role)

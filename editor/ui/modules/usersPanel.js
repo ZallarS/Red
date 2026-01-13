@@ -1,5 +1,6 @@
 import { getState, setState, subscribe } from '../store.js'
 import { setUserRole } from '../../actions.js'
+import { ROLE_META, ROLES, MESSAGES } from '../../constants.js'
 
 // ===== ADAPTER =====
 export function setUsers(users) {
@@ -23,8 +24,7 @@ if (!window.__canvasverse_panelModules) {
 
 window.__canvasverse_panelModules.set('users', {
     title: 'Пользователи',
-    // Панель пользователей доступна всем ролям
-    requiredRoles: ['admin', 'editor', 'viewer'],
+    requiredRoles: ['owner', 'admin', 'editor', 'viewer'],
 
     render(container) {
         console.log('👥 Рендерим панель пользователей')
@@ -107,7 +107,8 @@ window.__canvasverse_panelModules.set('users', {
 
                 const color = document.createElement('div')
                 color.className = 'user-color'
-                color.style.background = user.color || '#666'
+                const roleMeta = ROLE_META[user.role] || ROLE_META.viewer
+                color.style.background = user.color || roleMeta.color || '#666'
 
                 const nameContainer = document.createElement('div')
                 nameContainer.style.flex = '1'
@@ -137,17 +138,33 @@ window.__canvasverse_panelModules.set('users', {
                     name.appendChild(youBadge)
                 }
 
-                // Если мы админ и это не мы - показываем селектор ролей
-                if (myRole === 'admin' && user.id !== myId) {
+                // Определяем, можно ли менять роль этому пользователю
+                const canChangeRole = (
+                    // Только владелец или админ могут менять роли
+                    (myRole === 'owner' || myRole === 'admin') &&
+                    // Нельзя менять свою собственную роль (кроме некоторых случаев)
+                    user.id !== myId &&
+                    // Нельзя менять роль владельца
+                    user.role !== 'owner'
+                )
+
+                // Если можем менять роль - показываем селектор
+                if (canChangeRole) {
                     const select = document.createElement('select')
                     select.className = 'role-select'
                     select.dataset.userId = user.id
 
+                    // Создаем список ролей, доступных для назначения
                     const roles = [
                         { value: 'admin', label: 'Админ' },
                         { value: 'editor', label: 'Редактор' },
                         { value: 'viewer', label: 'Наблюдатель' }
                     ]
+
+                    // Владелец может назначать роль owner
+                    if (myRole === 'owner') {
+                        roles.unshift({ value: 'owner', label: 'Владелец' })
+                    }
 
                     roles.forEach(role => {
                         const option = document.createElement('option')
@@ -159,22 +176,29 @@ window.__canvasverse_panelModules.set('users', {
 
                     select.addEventListener('change', () => {
                         console.log(`📤 Изменение роли для ${user.id} на ${select.value}`)
+
+                        // Дополнительная проверка для владельца
+                        if (user.role === 'owner') {
+                            alert(MESSAGES.OWNER_IMMUNE)
+                            select.value = user.role // Сбрасываем значение
+                            return
+                        }
+
                         setUserRole(user.id, select.value)
                     })
 
                     roleContainer.appendChild(select)
                 } else {
-                    // Просто показываем роль
+                    // Просто показываем роль с бейджем
                     const roleBadge = document.createElement('div')
                     roleBadge.className = `role-badge role-${user.role || 'viewer'}`
 
-                    if (user.role === 'admin') {
-                        roleBadge.textContent = 'Админ'
-                    } else if (user.role === 'editor') {
-                        roleBadge.textContent = 'Редактор'
-                    } else {
-                        roleBadge.textContent = 'Наблюдатель'
-                    }
+                    // Используем метаданные роли для отображения
+                    const roleMeta = ROLE_META[user.role] || ROLE_META.viewer
+                    roleBadge.textContent = roleMeta.label
+                    roleBadge.style.color = roleMeta.color
+                    roleBadge.style.borderColor = `${roleMeta.color}30`
+                    roleBadge.style.background = `${roleMeta.color}10`
 
                     roleContainer.appendChild(roleBadge)
                 }

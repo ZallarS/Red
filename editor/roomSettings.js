@@ -39,7 +39,8 @@ export function initRoomSettings() {
         snapEnabled: true,
         defaultRole: 'viewer',
         createdAt: Date.now(),
-        owner: null
+        owner: null,
+        ownerName: null
     }
 }
 
@@ -104,7 +105,7 @@ function updateUIFromSettings(settings) {
 
 // Проверка прав на изменение настроек
 export function canEditSettings(userRole) {
-    return userRole === 'admin' || userRole === 'owner'
+    return userRole === 'owner' || userRole === 'admin'
 }
 
 // Форматирование настроек для отображения

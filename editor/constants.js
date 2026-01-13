@@ -18,6 +18,7 @@ export const COLORS = {
     success: '#20c997',
     warning: '#ffc107',
     error: '#ff4757',
+    owner: '#ff6b35', // Новый цвет для владельца
     admin: '#e0b400',
     editor: '#4a9eff',
     viewer: '#888'
@@ -25,6 +26,7 @@ export const COLORS = {
 
 // Роли пользователей
 export const ROLES = {
+    OWNER: 'owner',    // Новая роль владельца
     ADMIN: 'admin',
     EDITOR: 'editor',
     VIEWER: 'viewer'
@@ -32,13 +34,27 @@ export const ROLES = {
 
 // Метаданные ролей
 export const ROLE_META = {
+    owner: {
+        label: 'Владелец',
+        icon: '👑',
+        color: COLORS.owner,
+        canEdit: true,
+        canManageUsers: true,
+        canSave: true,
+        canChangeSettings: true,
+        isImmune: true, // Иммунитет от изменений
+        canChangeOwnerRole: false // Нельзя изменить роль владельца
+    },
     admin: {
         label: 'Админ',
-        icon: '👑',
+        icon: '⭐',
         color: COLORS.admin,
         canEdit: true,
         canManageUsers: true,
-        canSave: true
+        canSave: true,
+        canChangeSettings: true,
+        isImmune: false,
+        canChangeOwnerRole: false
     },
     editor: {
         label: 'Редактор',
@@ -46,7 +62,10 @@ export const ROLE_META = {
         color: COLORS.editor,
         canEdit: true,
         canManageUsers: false,
-        canSave: false
+        canSave: false,
+        canChangeSettings: false,
+        isImmune: false,
+        canChangeOwnerRole: false
     },
     viewer: {
         label: 'Наблюдатель',
@@ -54,7 +73,10 @@ export const ROLE_META = {
         color: COLORS.viewer,
         canEdit: false,
         canManageUsers: false,
-        canSave: false
+        canSave: false,
+        canChangeSettings: false,
+        isImmune: false,
+        canChangeOwnerRole: false
     }
 }
 
@@ -111,5 +133,6 @@ export const MESSAGES = {
     PERMISSION_DENIED: 'Недостаточно прав для выполнения действия',
     SAVING: 'Сохранение...',
     SAVED: 'Сохранено',
-    ERROR_SAVING: 'Ошибка при сохранении'
+    ERROR_SAVING: 'Ошибка при сохранении',
+    OWNER_IMMUNE: 'Нельзя изменить роль владельца'
 }

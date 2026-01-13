@@ -1,6 +1,7 @@
 import { getTile, setTile } from './map.js'
 import { ACTION, WS } from './protocol.js'
 import { send } from './ws.js'
+import { MESSAGES } from './constants.js'
 
 /* ============================================================
    ===============  MAP / DRAW ACTIONS (OLD) ==================
@@ -68,4 +69,21 @@ export function setUserRole(targetUserId, role) {
         targetUserId,
         role
     })
+}
+
+/**
+ * Обработка ответа на смену роли
+ */
+export function handleRoleSetResponse(response) {
+    if (!response.success) {
+        console.error(`❌ Ошибка смены роли: ${response.error}`)
+        // Можно показать уведомление пользователю
+        if (response.error.includes('owner') || response.error.includes('Owner')) {
+            alert(MESSAGES.OWNER_IMMUNE)
+        } else {
+            alert(response.error)
+        }
+    } else {
+        console.log(`✅ Роль успешно изменена: ${response.targetUserId} -> ${response.role}`)
+    }
 }

@@ -124,6 +124,12 @@ export function checkPermission(userRole, permission) {
             return roleMeta.canManageUsers
         case 'save':
             return roleMeta.canSave
+        case 'changeSettings':
+            return roleMeta.canChangeSettings
+        case 'isImmune':
+            return roleMeta.isImmune
+        case 'changeOwnerRole':
+            return roleMeta.canChangeOwnerRole
         default:
             return false
     }

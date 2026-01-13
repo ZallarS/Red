@@ -29,6 +29,15 @@ function applyGlobalStyles() {
         canvas.drawing-active {
             cursor: crosshair !important;
         }
+        .role-owner {
+            background: rgba(255, 107, 53, 0.1);
+            color: #ff6b35;
+            border: 1px solid rgba(255, 107, 53, 0.3);
+        }
+
+        .role-owner .owner-only {
+            display: block !important;
+        }
 
         canvas {
             cursor: default;
