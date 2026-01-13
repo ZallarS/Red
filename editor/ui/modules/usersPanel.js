@@ -23,6 +23,8 @@ if (!window.__canvasverse_panelModules) {
 
 window.__canvasverse_panelModules.set('users', {
     title: 'Пользователи',
+    // Панель пользователей доступна всем ролям
+    requiredRoles: ['admin', 'editor', 'viewer'],
 
     render(container) {
         console.log('👥 Рендерим панель пользователей')

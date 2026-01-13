@@ -505,22 +505,45 @@ function createPanel(side) {
         })
     }
 
+    // НОВАЯ ФУНКЦИЯ: Фильтрация модулей по роли
+    function filterModulesByRole(modules, userRole) {
+        return modules.filter(moduleKey => {
+            const module = window.__canvasverse_panelModules.get(moduleKey)
+            if (!module) return false
+
+            // Проверяем доступность модуля для роли
+            if (module.requiredRoles && Array.isArray(module.requiredRoles)) {
+                // Если указаны requiredRoles, проверяем вхождение
+                return module.requiredRoles.includes(userRole)
+            } else if (module.requiredRole) {
+                // Поддержка старого формата (одна роль)
+                return module.requiredRole === userRole
+            }
+            // Если ограничений нет, модуль доступен всем
+            return true
+        })
+    }
+
     // Рендер панели
     function renderPanel(state) {
         const panelState = state.panels[side]
         const moduleId = panelState.active || (side === 'left' ? 'tools' : 'users')
+        const userRole = state.role || 'viewer' // Получаем роль пользователя
 
         // Видимость панели
         panel.style.display = panelState.open ? 'flex' : 'none'
         edge.style.display = panelState.open ? 'none' : 'flex'
 
-        // Для правой панели рендерим табы
+        // Для правой панели рендерим табы с фильтрацией по роли
         if (side === 'right' && tabsContainer) {
             tabsContainer.innerHTML = ''
 
-            // ИСПРАВЛЕНО: Динамическое получение всех модулей кроме tools
-            const availableModules = Array.from(window.__canvasverse_panelModules.keys())
+            // Получаем все модули кроме tools и фильтруем по роли
+            const allModules = Array.from(window.__canvasverse_panelModules.keys())
                 .filter(key => key !== 'tools') // Исключаем tools, так как он в левой панели
+
+            // Фильтруем модули по роли пользователя
+            const availableModules = filterModulesByRole(allModules, userRole)
 
             // Сортируем модули: пользователи и настройки первые, остальные после
             availableModules.sort((a, b) => {
@@ -533,6 +556,21 @@ function createPanel(side) {
                 return a.localeCompare(b)
             })
 
+            // Если после фильтрации нет доступных модулей
+            if (availableModules.length === 0) {
+                tabsContainer.style.display = 'none'
+                title.textContent = 'Нет доступных панелей'
+                content.innerHTML = `
+                    <div style="padding: 40px 20px; text-align: center; color: #888;">
+                        <div style="font-size: 36px; margin-bottom: 16px; opacity: 0.5">🔒</div>
+                        <div>Нет доступных панелей для вашей роли</div>
+                        <div style="font-size: 12px; margin-top: 8px; opacity: 0.7">(${userRole})</div>
+                    </div>
+                `
+                return
+            }
+
+            // Рендерим табы для доступных модулей
             availableModules.forEach(moduleKey => {
                 const module = window.__canvasverse_panelModules.get(moduleKey)
                 if (!module) return
@@ -555,23 +593,24 @@ function createPanel(side) {
                 tabsContainer.appendChild(tab)
             })
 
-            // Если нет модулей для отображения
-            if (availableModules.length === 0) {
-                tabsContainer.style.display = 'none'
-            } else {
-                tabsContainer.style.display = 'flex'
+            // Автоматически прокручиваем к активному табу
+            setTimeout(() => {
+                const activeTab = tabsContainer.querySelector('.panel-tab.active')
+                if (activeTab) {
+                    activeTab.scrollIntoView({
+                        inline: 'center',
+                        block: 'nearest',
+                        behavior: 'smooth'
+                    })
+                }
+            }, 100)
 
-                // Автоматически прокручиваем к активному табу
-                setTimeout(() => {
-                    const activeTab = tabsContainer.querySelector('.panel-tab.active')
-                    if (activeTab) {
-                        activeTab.scrollIntoView({
-                            inline: 'center',
-                            block: 'nearest',
-                            behavior: 'smooth'
-                        })
-                    }
-                }, 100)
+            // Если текущий модуль недоступен для роли, переключаемся на первый доступный
+            if (!availableModules.includes(moduleId) && availableModules.length > 0) {
+                const newModuleId = availableModules[0]
+                console.log(`🔄 Модуль ${moduleId} недоступен для роли ${userRole}, переключаемся на ${newModuleId}`)
+                switchModule(newModuleId)
+                return // Прерываем выполнение, так как switchModule вызовет новый рендер
             }
         }
 

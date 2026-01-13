@@ -9,6 +9,7 @@ if (!window.__canvasverse_panelModules) {
 
 window.__canvasverse_panelModules.set('settings', {
     title: 'Настройки комнаты',
+    requiredRoles: ['admin'], // Только администраторы могут видеть эту панель
 
     render(container) {
         console.log('⚙️ Рендерим панель настроек комнаты')

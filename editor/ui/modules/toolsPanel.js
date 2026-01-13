@@ -7,6 +7,8 @@ if (!window.__canvasverse_panelModules) {
 
 window.__canvasverse_panelModules.set('tools', {
     title: 'Инструменты',
+    // Инструменты доступны редакторам и админам, но не наблюдателям
+    requiredRoles: ['admin', 'editor'],
 
     render(el) {
         console.log('🎨 Рендерим панель инструментов')
