@@ -231,13 +231,37 @@ function applyGlobalStyles() {
             margin-left: 8px;
         }
 
-        /* Стили для переключателя панелей */
+        /* ИСПРАВЛЕНО: Табы с горизонтальным скроллом */
         .panel-tabs {
             display: flex;
             background: #1a1a1a;
             border-bottom: 1px solid #222;
             padding: 8px 12px;
             gap: 4px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            white-space: nowrap;
+            scrollbar-width: thin;
+            scrollbar-color: #444 #1a1a1a;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .panel-tabs::-webkit-scrollbar {
+            height: 4px;
+        }
+        
+        .panel-tabs::-webkit-scrollbar-track {
+            background: #1a1a1a;
+            border-radius: 2px;
+        }
+        
+        .panel-tabs::-webkit-scrollbar-thumb {
+            background: #444;
+            border-radius: 2px;
+        }
+        
+        .panel-tabs::-webkit-scrollbar-thumb:hover {
+            background: #555;
         }
         
         .panel-tab {
@@ -254,6 +278,8 @@ function applyGlobalStyles() {
             display: flex;
             align-items: center;
             gap: 8px;
+            flex-shrink: 0;
+            min-width: fit-content;
         }
         
         .panel-tab:hover {
@@ -268,6 +294,7 @@ function applyGlobalStyles() {
         
         .panel-tab-icon {
             font-size: 16px;
+            flex-shrink: 0;
         }
         
         .panel-content {
@@ -491,24 +518,61 @@ function createPanel(side) {
         if (side === 'right' && tabsContainer) {
             tabsContainer.innerHTML = ''
 
-            const availableModules = ['users', 'settings']
+            // ИСПРАВЛЕНО: Динамическое получение всех модулей кроме tools
+            const availableModules = Array.from(window.__canvasverse_panelModules.keys())
+                .filter(key => key !== 'tools') // Исключаем tools, так как он в левой панели
+
+            // Сортируем модули: пользователи и настройки первые, остальные после
+            availableModules.sort((a, b) => {
+                const order = ['users', 'settings']
+                const indexA = order.indexOf(a)
+                const indexB = order.indexOf(b)
+                if (indexA !== -1 && indexB !== -1) return indexA - indexB
+                if (indexA !== -1) return -1
+                if (indexB !== -1) return 1
+                return a.localeCompare(b)
+            })
+
             availableModules.forEach(moduleKey => {
                 const module = window.__canvasverse_panelModules.get(moduleKey)
                 if (!module) return
 
                 const tab = document.createElement('button')
                 tab.className = `panel-tab ${moduleKey === moduleId ? 'active' : ''}`
+
+                // Определяем иконку для модуля
+                let icon = '📄'
+                if (moduleKey === 'users') icon = '👥'
+                else if (moduleKey === 'settings') icon = '⚙️'
+                else if (module.icon) icon = module.icon
+
                 tab.innerHTML = `
-                    <span class="panel-tab-icon">${
-                    moduleKey === 'users' ? '👥' :
-                        moduleKey === 'settings' ? '⚙️' : ''
-                }</span>
+                    <span class="panel-tab-icon">${icon}</span>
                     <span>${module.title}</span>
                 `
 
                 tab.addEventListener('click', () => switchModule(moduleKey))
                 tabsContainer.appendChild(tab)
             })
+
+            // Если нет модулей для отображения
+            if (availableModules.length === 0) {
+                tabsContainer.style.display = 'none'
+            } else {
+                tabsContainer.style.display = 'flex'
+
+                // Автоматически прокручиваем к активному табу
+                setTimeout(() => {
+                    const activeTab = tabsContainer.querySelector('.panel-tab.active')
+                    if (activeTab) {
+                        activeTab.scrollIntoView({
+                            inline: 'center',
+                            block: 'nearest',
+                            behavior: 'smooth'
+                        })
+                    }
+                }, 100)
+            }
         }
 
         // Переключаем модуль если нужно

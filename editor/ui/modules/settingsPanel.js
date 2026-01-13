@@ -516,11 +516,14 @@ if (!document.getElementById('settings-panel-styles')) {
             color: #4a9eff;
         }
 
+        /* ИСПРАВЛЕНО: Чекбоксы не наезжают на текст */
         .settings-toggle {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 16px;
             cursor: pointer;
+            padding: 8px 0;
+            min-height: 44px;
         }
 
         .settings-toggle input[type="checkbox"] {
@@ -529,11 +532,12 @@ if (!document.getElementById('settings-panel-styles')) {
 
         .settings-toggle-slider {
             position: relative;
-            width: 44px;
+            width: 48px;
             height: 24px;
             background: #333;
             border-radius: 12px;
             transition: all 0.3s ease;
+            flex-shrink: 0;
         }
 
         .settings-toggle-slider:before {
@@ -553,13 +557,15 @@ if (!document.getElementById('settings-panel-styles')) {
         }
 
         .settings-toggle input:checked + .settings-toggle-slider:before {
-            transform: translateX(20px);
+            transform: translateX(24px);
             background: #fff;
         }
 
         .settings-toggle-text {
             font-size: 14px;
             color: #ddd;
+            flex: 1;
+            padding-right: 8px;
         }
 
         .settings-actions {
@@ -671,6 +677,10 @@ if (!document.getElementById('settings-panel-styles')) {
 
             .settings-meta {
                 grid-template-columns: 1fr;
+            }
+            
+            .settings-toggle {
+                gap: 12px;
             }
         }
     `
