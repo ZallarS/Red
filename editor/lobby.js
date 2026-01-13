@@ -35,27 +35,6 @@ function ensureStyles() {
             opacity: 0;
             animation: fadeIn 0.2s ease-out forwards;
         }
-        @keyframes slideIn {
-    from {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
-}
-
-@keyframes slideOut {
-    from {
-        transform: translateX(0);
-        opacity: 1;
-    }
-    to {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-}
         
         @keyframes fadeIn {
             to { opacity: 1; }
@@ -73,6 +52,7 @@ function ensureStyles() {
             animation: slideUp 0.3s ease-out forwards;
             position: relative;
             z-index: 1001;
+            box-sizing: border-box; /* 🔥 Добавлено */
         }
         
         @keyframes slideUp {
@@ -104,6 +84,7 @@ function ensureStyles() {
             display: flex;
             gap: 12px;
             margin-bottom: 16px;
+            flex-wrap: wrap; /* 🔥 Добавлено для мобильных */
         }
         
         .lobby-input {
@@ -117,7 +98,9 @@ function ensureStyles() {
             font-family: 'Inter', sans-serif;
             transition: all 0.15s ease;
             outline: none;
-            min-width: 0;
+            min-width: 0; /* 🔥 Исправлено */
+            box-sizing: border-box; /* 🔥 Добавлено */
+            max-width: 100%; /* 🔥 Добавлено */
         }
         
         .lobby-input::placeholder {
@@ -146,6 +129,8 @@ function ensureStyles() {
             color: white;
             white-space: nowrap;
             flex-shrink: 0;
+            box-sizing: border-box; /* 🔥 Добавлено */
+            max-width: 100%; /* 🔥 Добавлено */
         }
         
         .lobby-input-btn:hover {
@@ -169,6 +154,7 @@ function ensureStyles() {
             justify-content: center;
             gap: 10px;
             margin-bottom: 32px;
+            box-sizing: border-box; /* 🔥 Добавлено */
         }
         
         .lobby-create-btn:hover {
@@ -585,6 +571,8 @@ function ensureStyles() {
             font-family: 'Inter', sans-serif;
             font-size: 14px;
             transition: all 0.2s ease;
+            box-sizing: border-box; /* 🔥 Добавлено */
+            max-width: 100%; /* 🔥 Добавлено */
         }
         
         .create-room-form-input:focus {
@@ -605,6 +593,8 @@ function ensureStyles() {
             transition: all 0.2s ease;
             resize: vertical;
             min-height: 80px;
+            box-sizing: border-box; /* 🔥 Добавлено */
+            max-width: 100%; /* 🔥 Добавлено */
         }
         
         .create-room-form-textarea:focus {
@@ -626,6 +616,7 @@ function ensureStyles() {
             border-radius: 2px;
             outline: none;
             -webkit-appearance: none;
+            max-width: 100%; /* 🔥 Добавлено */
         }
         
         .create-room-form-range input[type="range"]::-webkit-slider-thumb {
@@ -722,6 +713,8 @@ function ensureStyles() {
             display: flex;
             align-items: center;
             gap: 8px;
+            box-sizing: border-box; /* 🔥 Добавлено */
+            max-width: 100%; /* 🔥 Добавлено */
         }
         
         .create-room-popup-btn-cancel {
@@ -788,8 +781,10 @@ function ensureStyles() {
                 flex-direction: column;
             }
             
-            .lobby-input-btn {
+            .lobby-input, .lobby-input-btn {
                 width: 100%;
+                max-width: 100%;
+                flex: none;
             }
             
             .lobby-room {
@@ -836,17 +831,129 @@ function ensureStyles() {
                 width: 100%;
                 justify-content: center;
             }
-        }
-        
-        @media (max-width: 480px) {
-            .create-room-form-section {
-                padding: 16px;
+            
+            /* 🔥 Новые исправления для мобильных */
+            .lobby-input, .lobby-input-btn, .lobby-create-btn {
+                padding: 14px 16px;
+                font-size: 15px;
             }
             
             .lobby-room-meta {
                 flex-direction: column;
                 align-items: flex-start;
                 gap: 6px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .lobby-window {
+                padding: 20px 16px;
+                width: 98%;
+            }
+            
+            .lobby-title {
+                font-size: 22px;
+            }
+            
+            .lobby-subtitle {
+                font-size: 14px;
+                margin-bottom: 24px;
+            }
+            
+            .lobby-input, .lobby-input-btn, .lobby-create-btn {
+                padding: 12px 14px;
+                font-size: 14px;
+            }
+            
+            .lobby-input-wrapper {
+                gap: 10px;
+                margin-bottom: 12px;
+            }
+            
+            .lobby-create-btn {
+                margin-bottom: 24px;
+            }
+            
+            .lobby-divider {
+                margin: 20px 0;
+            }
+            
+            .lobby-rooms-title {
+                font-size: 15px;
+                margin-bottom: 12px;
+            }
+            
+            .lobby-room {
+                padding: 12px 14px;
+            }
+            
+            .lobby-room-icon {
+                width: 40px;
+                height: 40px;
+                font-size: 16px;
+            }
+            
+            .lobby-room-name {
+                font-size: 15px;
+            }
+            
+            .lobby-room-description {
+                font-size: 12px;
+            }
+            
+            .create-room-form-section {
+                padding: 16px;
+            }
+            
+            .create-room-form-input, .create-room-form-textarea {
+                padding: 10px 14px;
+                font-size: 13px;
+            }
+            
+            .create-room-popup-title {
+                font-size: 18px;
+            }
+            
+            .create-room-popup-btn {
+                padding: 10px 16px;
+                font-size: 13px;
+            }
+        }
+        
+        @media (max-width: 360px) {
+            .lobby-window {
+                padding: 16px 12px;
+                border-radius: 8px;
+            }
+            
+            .lobby-input, .lobby-input-btn, .lobby-create-btn {
+                padding: 10px 12px;
+                font-size: 13px;
+            }
+            
+            .lobby-title {
+                font-size: 20px;
+                margin-bottom: 4px;
+            }
+            
+            .lobby-subtitle {
+                font-size: 13px;
+                margin-bottom: 20px;
+            }
+            
+            .lobby-room {
+                padding: 10px 12px;
+                gap: 8px;
+            }
+            
+            .lobby-room-icon {
+                width: 36px;
+                height: 36px;
+                font-size: 14px;
+            }
+            
+            .lobby-room-name {
+                font-size: 14px;
             }
         }
     `
