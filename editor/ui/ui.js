@@ -26,6 +26,13 @@ function applyGlobalStyles() {
             margin: 0;
             padding: 0;
         }
+        canvas.drawing-active {
+            cursor: crosshair !important;
+        }
+
+        canvas {
+            cursor: default;
+        }
         
         button {
             font-family: 'Inter', sans-serif;

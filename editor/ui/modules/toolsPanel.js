@@ -7,7 +7,6 @@ if (!window.__canvasverse_panelModules) {
 
 window.__canvasverse_panelModules.set('tools', {
     title: 'Инструменты',
-    // Инструменты доступны редакторам и админам, но не наблюдателям
     requiredRoles: ['admin', 'editor'],
 
     render(el) {
@@ -16,18 +15,18 @@ window.__canvasverse_panelModules.set('tools', {
         const container = document.createElement('div')
         container.className = 'tools-panel-container'
 
-        // Создаем инструменты
+        // Создаем инструменты - только рисование и стирание
         const tools = [
             { id: 'draw', label: 'Рисовать', icon: '✏', isActive: () => getState().tool === 'draw' },
-            { id: 'erase', label: 'Стереть', icon: '🧽', isActive: () => getState().tool === 'erase' },
-            { id: 'grid', label: 'Сетка', icon: '⬚', isActive: () => getState().grid },
-            { id: 'snapping', label: 'Привязка', icon: '🧲', isActive: () => getState().snapping }
+            { id: 'erase', label: 'Стереть', icon: '🧽', isActive: () => getState().tool === 'erase' }
+            // Убраны grid и snapping, так как они теперь в настройках комнаты
         ]
 
         tools.forEach(tool => {
             const button = document.createElement('button')
             button.className = 'tool-button'
             button.title = tool.label
+            button.dataset.tool = tool.id
 
             const icon = document.createElement('div')
             icon.className = 'tool-icon'
@@ -43,14 +42,7 @@ window.__canvasverse_panelModules.set('tools', {
             // Обработчик клика
             button.addEventListener('click', () => {
                 console.log(`🛠️ Выбран инструмент: ${tool.label}`)
-
-                if (tool.id === 'draw' || tool.id === 'erase') {
-                    setState({ tool: tool.id })
-                } else if (tool.id === 'grid') {
-                    setState({ grid: !getState().grid })
-                } else if (tool.id === 'snapping') {
-                    setState({ snapping: !getState().snapping })
-                }
+                setState({ tool: tool.id })
             })
 
             // Функция обновления состояния
@@ -61,11 +53,6 @@ window.__canvasverse_panelModules.set('tools', {
                 if (active) {
                     icon.style.color = '#4a9eff'
                     label.style.color = '#4a9eff'
-                    if (tool.id === 'grid' || tool.id === 'snapping') {
-                        button.style.background = '#4a9eff'
-                        icon.style.color = '#fff'
-                        label.style.color = '#fff'
-                    }
                 } else {
                     icon.style.color = '#888'
                     label.style.color = '#888'

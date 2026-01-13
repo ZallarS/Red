@@ -2,8 +2,7 @@ const listeners = new Set()
 
 const state = {
     tool: 'draw',
-    grid: true,
-    snapping: true,
+    // Убраны grid и snapping, так как они теперь управляются через настройки комнаты
 
     users: [],
     userId: null,
@@ -48,6 +47,24 @@ export function setState(patch) {
             state.panels.right = { ...state.panels.right, ...patch.panels.right }
         }
         delete patch.panels
+    }
+
+    // Если в patch есть roomSettings, обновляем grid и snapping
+    if (patch.roomSettings !== undefined) {
+        // Применяем настройки сетки и привязки если они заданы в настройках комнаты
+        if (patch.roomSettings?.gridEnabled !== undefined) {
+            state.grid = patch.roomSettings.gridEnabled
+        } else {
+            // Если в настройках комнаты не указано, используем значение по умолчанию true
+            state.grid = true
+        }
+
+        if (patch.roomSettings?.snapEnabled !== undefined) {
+            state.snapping = patch.roomSettings.snapEnabled
+        } else {
+            // Если в настройках комнаты не указано, используем значение по умолчанию true
+            state.snapping = true
+        }
     }
 
     Object.assign(state, patch)
