@@ -1,736 +1,653 @@
+// editor/ui/modules/settingsPanel.js
+import { PanelBase, PanelFactory } from '../panelBase.js'
 import { getState, setState, subscribe } from '../store.js'
-import { saveRoomSettings, validateSettings, ROOM_SETTINGS, ROOM_SETTINGS_META, canEditSettings } from '../../roomSettings.js'
-import { send } from '../../ws.js'
+import { saveRoomSettings, validateSettings, ROOM_SETTINGS, ROOM_SETTINGS_META } from '../../roomSettings.js'
 
-// Регистрируем модуль в глобальном реестре
-if (!window.__canvasverse_panelModules) {
-    window.__canvasverse_panelModules = new Map()
-}
+/**
+ * Панель настроек комнаты (переработана на основе PanelBase)
+ */
+class SettingsPanel extends PanelBase {
+    constructor() {
+        super({
+            id: 'settings',
+            title: 'Настройки комнаты',
+            icon: '⚙️',
+            requiredRoles: ['owner'],
+            description: 'Управление настройками комнаты',
+            category: 'settings',
+            version: '2.0.0'
+        })
 
-window.__canvasverse_panelModules.set('settings', {
-    title: 'Настройки комнаты',
-    requiredRoles: ['admin'], // Только администраторы могут видеть эту панель
+        this.currentSettings = null
+        this.formElements = new Map()
+        this.isSaving = false
+    }
 
-    render(container) {
-        console.log('⚙️ Рендерим панель настроек комнаты')
+    /**
+     * Рендерит контент панели
+     */
+    renderContent() {
+        // Очищаем контент
+        this.content.innerHTML = ''
 
-        const panel = document.createElement('div')
-        panel.className = 'settings-panel'
-        panel.innerHTML = `
-            <div class="settings-header">
-                <div class="settings-title">Настройки комнаты</div>
-                <div class="settings-status" id="settings-status"></div>
-            </div>
-            <div class="settings-form" id="settings-form"></div>
-        `
+        // Загружаем текущие настройки
+        const state = getState()
+        this.currentSettings = state.roomSettings || {}
 
-        container.appendChild(panel)
+        // Создаем форму настроек
+        const form = document.createElement('form')
+        form.className = 'settings-form'
+        form.id = 'room-settings-form'
 
-        let currentSettings = null
-        let unsubscribe = null
+        // Секция основных настроек
+        const basicSection = this.createSection({
+            title: 'Основные настройки',
+            icon: '📝'
+        })
 
-        function renderForm() {
-            const state = getState()
-            const settings = state.roomSettings || {}
-            const userRole = state.role
-            currentSettings = settings
+        const nameField = this.createInputField({
+            id: 'room-name',
+            label: 'Название комнаты',
+            type: 'text',
+            value: this.currentSettings.name || '',
+            placeholder: 'Введите название комнаты',
+            hint: 'Отображается в списке комнат'
+        })
 
-            const form = document.getElementById('settings-form')
-            if (!form) return
+        const descField = this.createInputField({
+            id: 'room-description',
+            label: 'Описание',
+            type: 'textarea',
+            value: this.currentSettings.description || '',
+            placeholder: 'Опишите назначение комнаты',
+            rows: 3
+        })
 
-            const canEdit = canEditSettings(userRole)
+        basicSection.appendChild(nameField)
+        basicSection.appendChild(descField)
+        form.appendChild(basicSection)
 
-            form.innerHTML = `
-                <div class="settings-section">
-                    <div class="settings-section-title">
-                        <span class="settings-section-icon">📝</span>
-                        Основные настройки
-                    </div>
-                    
-                    <div class="settings-field">
-                        <label for="room-name">Название комнаты</label>
-                        <input 
-                            type="text" 
-                            id="room-name" 
-                            value="${settings.name || ''}"
-                            ${!canEdit ? 'disabled' : ''}
-                            placeholder="Введите название комнаты"
-                        />
-                        <div class="settings-hint">Отображается в списке комнат</div>
-                    </div>
+        // Секция доступа
+        const accessSection = this.createSection({
+            title: 'Доступ и пользователи',
+            icon: '👥'
+        })
 
-                    <div class="settings-field">
-                        <label for="room-description">Описание</label>
-                        <textarea 
-                            id="room-description" 
-                            ${!canEdit ? 'disabled' : ''}
-                            placeholder="Опишите назначение комнаты"
-                            rows="3"
-                        >${settings.description || ''}</textarea>
-                    </div>
-                </div>
+        // Видимость комнаты
+        const visibilityField = this.createVisibilityField()
+        accessSection.appendChild(visibilityField)
 
-                <div class="settings-section">
-                    <div class="settings-section-title">
-                        <span class="settings-section-icon">👥</span>
-                        Доступ и пользователи
-                    </div>
-                    
-                    <div class="settings-field">
-                        <label>Видимость комнаты</label>
-                        <div class="settings-radio-group" id="visibility-group">
-                            ${Object.entries(ROOM_SETTINGS_META).map(([key, meta]) => `
-                                <label class="settings-radio">
-                                    <input 
-                                        type="radio" 
-                                        name="visibility" 
-                                        value="${key}" 
-                                        ${settings.visibility === key ? 'checked' : ''}
-                                        ${!canEdit ? 'disabled' : ''}
-                                    />
-                                    <span class="settings-radio-icon">${meta.icon}</span>
-                                    <span class="settings-radio-text">
-                                        <strong>${meta.label}</strong>
-                                        <small>${meta.description}</small>
-                                    </span>
-                                </label>
-                            `).join('')}
-                        </div>
-                    </div>
+        // Пароль (показывается только при выборе "С паролем")
+        const passwordField = this.createInputField({
+            id: 'room-password',
+            label: 'Пароль',
+            type: 'password',
+            value: this.currentSettings.password || '',
+            placeholder: 'Введите пароль',
+            hint: 'Требуется для входа в комнату'
+        })
 
-                    <div class="settings-field" id="password-field" style="display: ${settings.visibility === ROOM_SETTINGS.PASSWORD ? 'block' : 'none'}">
-                        <label for="room-password">Пароль</label>
-                        <input 
-                            type="password" 
-                            id="room-password" 
-                            value="${settings.password || ''}"
-                            ${!canEdit ? 'disabled' : ''}
-                            placeholder="Введите пароль"
-                        />
-                        <div class="settings-hint">Требуется для входа в комнату</div>
-                    </div>
+        passwordField.style.display = this.currentSettings.visibility === ROOM_SETTINGS.PASSWORD ? 'block' : 'none'
+        accessSection.appendChild(passwordField)
 
-                    <div class="settings-field">
-                        <label for="max-users">Максимальное количество пользователей</label>
-                        <div class="settings-range">
-                            <input 
-                                type="range" 
-                                id="max-users" 
-                                min="1" 
-                                max="100" 
-                                value="${settings.maxUsers || 20}"
-                                ${!canEdit ? 'disabled' : ''}
-                            />
-                            <span class="settings-range-value">${settings.maxUsers || 20}</span>
-                        </div>
-                    </div>
+        // Максимальное количество пользователей
+        const maxUsersField = this.createRangeField({
+            id: 'max-users',
+            label: 'Максимальное количество пользователей',
+            min: 1,
+            max: 100,
+            value: this.currentSettings.maxUsers || 20,
+            hint: 'Лимит пользователей в комнате'
+        })
 
-                    <div class="settings-field">
-                        <label for="default-role">Роль по умолчанию</label>
-                        <select id="default-role" ${!canEdit ? 'disabled' : ''}>
-                            <option value="viewer" ${settings.defaultRole === 'viewer' ? 'selected' : ''}>Наблюдатель</option>
-                            <option value="editor" ${settings.defaultRole === 'editor' ? 'selected' : ''}>Редактор</option>
-                            <option value="admin" ${settings.defaultRole === 'admin' ? 'selected' : ''}>Администратор</option>
-                        </select>
-                    </div>
-                </div>
+        accessSection.appendChild(maxUsersField)
 
-                <div class="settings-section">
-                    <div class="settings-section-title">
-                        <span class="settings-section-icon">🎨</span>
-                        Настройки редактора
-                    </div>
-                    
-                    <!-- ИСПРАВЛЕНА СТРУКТУРА: Текст идет ПЕРЕД ползунком -->
-                    <div class="settings-field">
-                        <label class="settings-toggle" for="grid-enabled">
-                            <span class="settings-toggle-text">Включить сетку</span>
-                            <input 
-                                type="checkbox" 
-                                id="grid-enabled" 
-                                ${settings.gridEnabled !== false ? 'checked' : ''}
-                                ${!canEdit ? 'disabled' : ''}
-                            />
-                            <span class="settings-toggle-slider"></span>
-                        </label>
-                    </div>
+        // Роль по умолчанию
+        const roleField = this.createSelectField({
+            id: 'default-role',
+            label: 'Роль по умолчанию',
+            options: [
+                { value: 'viewer', label: 'Наблюдатель' },
+                { value: 'editor', label: 'Редактор' },
+                { value: 'admin', label: 'Администратор' }
+            ],
+            value: this.currentSettings.defaultRole || 'viewer',
+            hint: 'Роль для новых пользователей'
+        })
 
-                    <!-- ИСПРАВЛЕНА СТРУКТУРА: Текст идет ПЕРЕД ползунком -->
-                    <div class="settings-field">
-                        <label class="settings-toggle" for="snap-enabled">
-                            <span class="settings-toggle-text">Включить привязку</span>
-                            <input 
-                                type="checkbox" 
-                                id="snap-enabled" 
-                                ${settings.snapEnabled !== false ? 'checked' : ''}
-                                ${!canEdit ? 'disabled' : ''}
-                            />
-                            <span class="settings-toggle-slider"></span>
-                        </label>
-                    </div>
-                </div>
+        accessSection.appendChild(roleField)
+        form.appendChild(accessSection)
 
-                ${canEdit ? `
-                    <div class="settings-actions">
-                        <button type="button" class="settings-btn settings-btn-primary" id="save-settings">
-                            <span class="settings-btn-icon">💾</span>
-                            Сохранить настройки
-                        </button>
-                        <button type="button" class="settings-btn" id="reset-settings">
-                            <span class="settings-btn-icon">↺</span>
-                            Сбросить изменения
-                        </button>
-                    </div>
-                ` : `
-                    <div class="settings-info">
-                        <div class="settings-info-icon">👑</div>
-                        <div class="settings-info-text">
-                            <strong>Только администратор</strong>
-                            <small>может изменять настройки комнаты</small>
-                        </div>
-                    </div>
-                `}
+        // Секция редактора
+        const editorSection = this.createSection({
+            title: 'Настройки редактора',
+            icon: '🎨'
+        })
 
-                <div class="settings-meta">
-                    <div class="settings-meta-item">
-                        <span class="settings-meta-label">Создана:</span>
-                        <span class="settings-meta-value">${new Date(settings.createdAt || Date.now()).toLocaleDateString('ru-RU')}</span>
-                    </div>
-                    <div class="settings-meta-item">
-                        <span class="settings-meta-label">Пользователей:</span>
-                        <span class="settings-meta-value">${settings.currentUsers || 0}/${settings.maxUsers || 20}</span>
-                    </div>
-                    ${settings.owner ? `
-                        <div class="settings-meta-item">
-                            <span class="settings-meta-label">Владелец:</span>
-                            <span class="settings-meta-value">${settings.owner?.substring(0, 8)}...</span>
-                        </div>
-                    ` : ''}
-                </div>
+        const gridToggle = this.createToggle({
+            id: 'grid-enabled',
+            label: 'Включить сетку',
+            checked: this.currentSettings.gridEnabled !== false
+        })
+
+        const snapToggle = this.createToggle({
+            id: 'snap-enabled',
+            label: 'Включить привязку',
+            checked: this.currentSettings.snapEnabled !== false
+        })
+
+        editorSection.appendChild(gridToggle)
+        editorSection.appendChild(snapToggle)
+        form.appendChild(editorSection)
+
+        // Кнопки действий
+        const actionsSection = document.createElement('div')
+        actionsSection.className = 'settings-actions'
+
+        const saveButton = this.createButton({
+            id: 'save-settings',
+            text: 'Сохранить настройки',
+            icon: '💾',
+            primary: true,
+            onClick: (e) => {
+                e.preventDefault()
+                this.saveSettings()
+            }
+        })
+
+        const resetButton = this.createButton({
+            id: 'reset-settings',
+            text: 'Сбросить изменения',
+            icon: '↺',
+            onClick: (e) => {
+                e.preventDefault()
+                this.resetForm()
+            }
+        })
+
+        actionsSection.appendChild(saveButton)
+        actionsSection.appendChild(resetButton)
+        form.appendChild(actionsSection)
+
+        // Мета-информация
+        const metaSection = this.createMetaSection()
+        form.appendChild(metaSection)
+
+        this.content.appendChild(form)
+
+        // Сохраняем ссылки на элементы формы
+        this.collectFormElements(form)
+
+        // Настраиваем обработчики
+        this.setupFormHandlers(form)
+
+        // Применяем стили
+        this.applySettingsStyles()
+
+        // Подписываемся на изменения
+        this.setupSubscriptions()
+    }
+
+    /**
+     * Создает поле выбора видимости
+     */
+    createVisibilityField() {
+        const field = document.createElement('div')
+        field.className = 'panel-field'
+
+        const label = document.createElement('label')
+        label.className = 'panel-field-label'
+        label.textContent = 'Видимость комнаты'
+
+        const group = document.createElement('div')
+        group.className = 'visibility-group'
+        group.id = 'visibility-group'
+
+        Object.entries(ROOM_SETTINGS_META).forEach(([key, meta]) => {
+            const radio = document.createElement('label')
+            radio.className = 'visibility-radio'
+
+            const input = document.createElement('input')
+            input.type = 'radio'
+            input.name = 'visibility'
+            input.value = key
+            input.checked = this.currentSettings.visibility === key
+
+            const icon = document.createElement('span')
+            icon.className = 'visibility-icon'
+            icon.textContent = meta.icon
+
+            const text = document.createElement('div')
+            text.className = 'visibility-text'
+            text.innerHTML = `
+                <strong>${meta.label}</strong>
+                <small>${meta.description}</small>
             `
 
-            // Обработчики событий
-            const visibilityGroup = form.querySelector('#visibility-group')
-            if (visibilityGroup) {
-                visibilityGroup.addEventListener('change', (e) => {
-                    const passwordField = form.querySelector('#password-field')
+            radio.appendChild(input)
+            radio.appendChild(icon)
+            radio.appendChild(text)
+            group.appendChild(radio)
+        })
+
+        field.appendChild(label)
+        field.appendChild(group)
+
+        return field
+    }
+
+    /**
+     * Создает поле с ползунком
+     */
+    createRangeField(config) {
+        const field = document.createElement('div')
+        field.className = 'panel-field'
+
+        const label = document.createElement('label')
+        label.className = 'panel-field-label'
+        label.textContent = config.label
+        label.htmlFor = config.id
+
+        const rangeContainer = document.createElement('div')
+        rangeContainer.className = 'range-container'
+
+        const range = document.createElement('input')
+        range.type = 'range'
+        range.id = config.id
+        range.min = config.min
+        range.max = config.max
+        range.value = config.value
+
+        const value = document.createElement('span')
+        value.className = 'range-value'
+        value.textContent = config.value
+
+        range.addEventListener('input', (e) => {
+            value.textContent = e.target.value
+        })
+
+        rangeContainer.appendChild(range)
+        rangeContainer.appendChild(value)
+
+        field.appendChild(label)
+        field.appendChild(rangeContainer)
+
+        if (config.hint) {
+            const hint = document.createElement('div')
+            hint.className = 'panel-field-hint'
+            hint.textContent = config.hint
+            field.appendChild(hint)
+        }
+
+        return field
+    }
+
+    /**
+     * Создает поле выбора
+     */
+    createSelectField(config) {
+        const field = document.createElement('div')
+        field.className = 'panel-field'
+
+        const label = document.createElement('label')
+        label.className = 'panel-field-label'
+        label.textContent = config.label
+        label.htmlFor = config.id
+
+        const select = document.createElement('select')
+        select.id = config.id
+        select.className = 'panel-field-input'
+
+        config.options.forEach(option => {
+            const optionElement = document.createElement('option')
+            optionElement.value = option.value
+            optionElement.textContent = option.label
+            if (option.value === config.value) {
+                optionElement.selected = true
+            }
+            select.appendChild(optionElement)
+        })
+
+        field.appendChild(label)
+        field.appendChild(select)
+
+        if (config.hint) {
+            const hint = document.createElement('div')
+            hint.className = 'panel-field-hint'
+            hint.textContent = config.hint
+            field.appendChild(hint)
+        }
+
+        return field
+    }
+
+    /**
+     * Создает секцию с мета-информацией
+     */
+    createMetaSection() {
+        const section = document.createElement('div')
+        section.className = 'settings-meta'
+
+        const metaGrid = document.createElement('div')
+        metaGrid.className = 'settings-meta-grid'
+
+        const metaItems = [
+            {
+                label: 'Создана',
+                value: new Date(this.currentSettings.createdAt || Date.now()).toLocaleDateString('ru-RU')
+            },
+            {
+                label: 'Пользователей',
+                value: `${this.currentSettings.currentUsers || 0}/${this.currentSettings.maxUsers || 20}`
+            }
+        ]
+
+        if (this.currentSettings.owner) {
+            metaItems.push({
+                label: 'Владелец',
+                value: this.currentSettings.owner.substring(0, 8) + '...'
+            })
+        }
+
+        metaItems.forEach(item => {
+            const metaItem = document.createElement('div')
+            metaItem.className = 'settings-meta-item'
+
+            const label = document.createElement('div')
+            label.className = 'settings-meta-label'
+            label.textContent = item.label
+
+            const value = document.createElement('div')
+            value.className = 'settings-meta-value'
+            value.textContent = item.value
+
+            metaItem.appendChild(label)
+            metaItem.appendChild(value)
+            metaGrid.appendChild(metaItem)
+        })
+
+        section.appendChild(metaGrid)
+        return section
+    }
+
+    /**
+     * Собирает ссылки на элементы формы
+     */
+    collectFormElements(form) {
+        this.formElements.clear()
+
+        // Собираем все поля ввода
+        const inputs = form.querySelectorAll('input, select, textarea')
+        inputs.forEach(input => {
+            this.formElements.set(input.id, input)
+        })
+    }
+
+    /**
+     * Настраивает обработчики формы
+     */
+    setupFormHandlers(form) {
+        // Обработчик изменения видимости
+        const visibilityGroup = form.querySelector('#visibility-group')
+        if (visibilityGroup) {
+            visibilityGroup.addEventListener('change', (e) => {
+                if (e.target.name === 'visibility') {
+                    const passwordField = form.querySelector('#room-password').closest('.panel-field')
                     if (e.target.value === ROOM_SETTINGS.PASSWORD) {
                         passwordField.style.display = 'block'
                     } else {
                         passwordField.style.display = 'none'
                     }
-                })
-            }
-
-            const maxUsersRange = form.querySelector('#max-users')
-            const maxUsersValue = form.querySelector('.settings-range-value')
-            if (maxUsersRange && maxUsersValue) {
-                maxUsersRange.addEventListener('input', (e) => {
-                    maxUsersValue.textContent = e.target.value
-                })
-            }
-
-            const saveBtn = form.querySelector('#save-settings')
-            if (saveBtn) {
-                saveBtn.addEventListener('click', saveSettings)
-            }
-
-            const resetBtn = form.querySelector('#reset-settings')
-            if (resetBtn) {
-                resetBtn.addEventListener('click', resetForm)
-            }
-
-            // Показываем статус
-            updateStatus('ready', 'Настройки загружены')
-        }
-
-        function saveSettings() {
-            const form = document.getElementById('settings-form')
-            if (!form) return
-
-            const newSettings = {
-                name: form.querySelector('#room-name').value.trim(),
-                description: form.querySelector('#room-description').value.trim(),
-                visibility: form.querySelector('input[name="visibility"]:checked')?.value || ROOM_SETTINGS.PUBLIC,
-                password: form.querySelector('#room-password')?.value || '',
-                maxUsers: parseInt(form.querySelector('#max-users').value) || 20,
-                defaultRole: form.querySelector('#default-role').value,
-                gridEnabled: form.querySelector('#grid-enabled').checked,
-                snapEnabled: form.querySelector('#snap-enabled').checked
-            }
-
-            // Валидация
-            const validation = validateSettings(newSettings)
-            if (!validation.valid) {
-                updateStatus('error', validation.errors.join(', '))
-                return
-            }
-
-            // Если пароль не требуется, очищаем его
-            if (newSettings.visibility !== ROOM_SETTINGS.PASSWORD) {
-                newSettings.password = ''
-            }
-
-            updateStatus('saving', 'Сохранение...')
-
-            // Сохраняем в store для немедленного обновления UI
-            setState({
-                roomSettings: {
-                    ...currentSettings,
-                    ...newSettings
                 }
             })
 
-            // Отправляем на сервер
-            const success = saveRoomSettings(newSettings)
-            if (success) {
-                updateStatus('success', 'Настройки сохранены')
+            this.cleanupFunctions.push(() => {
+                visibilityGroup.removeEventListener('change', this.handleVisibilityChange)
+            })
+        }
 
-                // Через 3 секунды скрываем статус
-                setTimeout(() => {
-                    updateStatus('ready', '')
-                }, 3000)
-            } else {
-                updateStatus('error', 'Ошибка сохранения')
+        // Обработчик сохранения формы
+        form.addEventListener('submit', (e) => {
+            e.preventDefault()
+            this.saveSettings()
+        })
+    }
+
+    /**
+     * Сохраняет настройки
+     */
+    saveSettings() {
+        if (this.isSaving) return
+
+        const form = document.getElementById('room-settings-form')
+        if (!form) return
+
+        // Собираем данные формы
+        const newSettings = {
+            name: this.formElements.get('room-name')?.value.trim() || '',
+            description: this.formElements.get('room-description')?.value.trim() || '',
+            visibility: form.querySelector('input[name="visibility"]:checked')?.value || ROOM_SETTINGS.PUBLIC,
+            password: this.formElements.get('room-password')?.value || '',
+            maxUsers: parseInt(this.formElements.get('max-users')?.value) || 20,
+            defaultRole: this.formElements.get('default-role')?.value || 'viewer',
+            gridEnabled: this.formElements.get('grid-enabled')?.checked !== false,
+            snapEnabled: this.formElements.get('snap-enabled')?.checked !== false
+        }
+
+        // Валидация
+        const validation = validateSettings(newSettings)
+        if (!validation.valid) {
+            this.showMessage('error', validation.errors.join(', '))
+            return
+        }
+
+        // Если пароль не требуется, очищаем его
+        if (newSettings.visibility !== ROOM_SETTINGS.PASSWORD) {
+            newSettings.password = ''
+        }
+
+        this.isSaving = true
+        this.showMessage('info', 'Сохранение настроек...')
+
+        // Обновляем состояние
+        setState({
+            roomSettings: {
+                ...this.currentSettings,
+                ...newSettings
             }
+        })
+
+        // Сохраняем на сервер
+        const success = saveRoomSettings(newSettings)
+        if (success) {
+            this.showMessage('success', 'Настройки сохранены')
+            this.currentSettings = newSettings
+
+            // Обновляем мета-информацию
+            this.updateMetaSection()
+        } else {
+            this.showMessage('error', 'Ошибка сохранения')
         }
 
-        function resetForm() {
-            renderForm()
-            updateStatus('info', 'Изменения сброшены')
+        this.isSaving = false
+    }
 
-            setTimeout(() => {
-                updateStatus('ready', '')
-            }, 2000)
-        }
+    /**
+     * Сбрасывает форму
+     */
+    resetForm() {
+        this.renderContent()
+        this.showMessage('info', 'Изменения сброшены')
+    }
 
-        function updateStatus(type, message) {
-            const statusEl = document.getElementById('settings-status')
-            if (!statusEl) return
+    /**
+     * Обновляет секцию с мета-информацией
+     */
+    updateMetaSection() {
+        const state = getState()
+        this.currentSettings = state.roomSettings || {}
 
-            statusEl.className = `settings-status settings-status-${type}`
-            statusEl.textContent = message
-            statusEl.style.display = message ? 'block' : 'none'
-        }
-
-        // Первоначальный рендеринг
-        renderForm()
-
-        // Подписываемся на изменения
-        unsubscribe = subscribe(renderForm)
-
-        return () => {
-            if (unsubscribe) unsubscribe()
+        const metaSection = this.content.querySelector('.settings-meta')
+        if (metaSection) {
+            const newMetaSection = this.createMetaSection()
+            metaSection.parentNode.replaceChild(newMetaSection, metaSection)
         }
     }
-})
 
-// Добавляем стили для панели настроек
-if (!document.getElementById('settings-panel-styles')) {
-    const styleEl = document.createElement('style')
-    styleEl.id = 'settings-panel-styles'
-    styleEl.textContent = `
-        .settings-panel {
-            padding: 16px;
-            color: #fff;
-            font-family: 'Inter', sans-serif;
-        }
+    /**
+     * Настраивает подписки
+     */
+    setupSubscriptions() {
+        // Подписываемся на изменения настроек
+        this.unsubscribeSettings = subscribe((state) => {
+            if (state.roomSettings !== this.currentSettings) {
+                this.currentSettings = state.roomSettings || {}
+                this.updateMetaSection()
+            }
+        })
 
-        .settings-header {
-            margin-bottom: 24px;
-            padding-bottom: 16px;
-            border-bottom: 1px solid #222;
-        }
+        this.cleanupFunctions.push(() => {
+            if (this.unsubscribeSettings) {
+                this.unsubscribeSettings()
+            }
+        })
+    }
 
-        .settings-title {
-            font-size: 20px;
-            font-weight: 600;
-            color: #fff;
-            margin-bottom: 8px;
-        }
+    /**
+     * Применяет стили для панели настроек
+     */
+    applySettingsStyles() {
+        if (document.getElementById('settings-panel-styles')) return
 
-        .settings-status {
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 14px;
-            display: none;
-        }
-
-        .settings-status-saving {
-            background: rgba(255, 193, 7, 0.1);
-            color: #ffc107;
-            border: 1px solid rgba(255, 193, 7, 0.3);
-        }
-
-        .settings-status-success {
-            background: rgba(32, 201, 151, 0.1);
-            color: #20c997;
-            border: 1px solid rgba(32, 201, 151, 0.3);
-        }
-
-        .settings-status-error {
-            background: rgba(255, 71, 87, 0.1);
-            color: #ff4757;
-            border: 1px solid rgba(255, 71, 87, 0.3);
-        }
-
-        .settings-status-info {
-            background: rgba(74, 158, 255, 0.1);
-            color: #4a9eff;
-            border: 1px solid rgba(74, 158, 255, 0.3);
-        }
-
-        .settings-section {
-            margin-bottom: 24px;
-            background: #1a1a1a;
-            border: 1px solid #222;
-            border-radius: 8px;
-            padding: 16px;
-        }
-
-        .settings-section-title {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 16px;
-            font-weight: 600;
-            color: #fff;
-            margin-bottom: 16px;
-        }
-
-        .settings-section-icon {
-            font-size: 18px;
-        }
-
-        .settings-field {
-            margin-bottom: 16px;
-        }
-
-        .settings-field label {
-            display: block;
-            font-size: 14px;
-            font-weight: 500;
-            color: #ddd;
-            margin-bottom: 8px;
-        }
-
-        .settings-field input[type="text"],
-        .settings-field input[type="password"],
-        .settings-field textarea,
-        .settings-field select {
-            width: 100%;
-            padding: 10px 12px;
-            background: #2a2a2a;
-            border: 1px solid #333;
-            border-radius: 6px;
-            color: #fff;
-            font-family: 'Inter', sans-serif;
-            font-size: 14px;
-            transition: all 0.2s ease;
-        }
-
-        .settings-field input:focus,
-        .settings-field textarea:focus,
-        .settings-field select:focus {
-            border-color: #4a9eff;
-            outline: none;
-            background: #2c2c2c;
-        }
-
-        .settings-field textarea {
-            resize: vertical;
-            min-height: 60px;
-        }
-
-        .settings-hint {
-            font-size: 12px;
-            color: #888;
-            margin-top: 4px;
-        }
-
-        .settings-radio-group {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .settings-radio {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 12px;
-            background: #2a2a2a;
-            border: 1px solid #333;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .settings-radio:hover {
-            background: #333;
-            border-color: #444;
-        }
-
-        .settings-radio input[type="radio"] {
-            margin: 0;
-        }
-
-        .settings-radio-icon {
-            font-size: 18px;
-            width: 24px;
-            text-align: center;
-        }
-
-        .settings-radio-text {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .settings-radio-text strong {
-            font-size: 14px;
-            color: #fff;
-        }
-
-        .settings-radio-text small {
-            font-size: 12px;
-            color: #888;
-        }
-
-        .settings-range {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
-
-        .settings-range input[type="range"] {
-            flex: 1;
-            height: 4px;
-            background: #333;
-            border-radius: 2px;
-            outline: none;
-        }
-
-        .settings-range-value {
-            min-width: 40px;
-            text-align: center;
-            font-size: 14px;
-            font-weight: 600;
-            color: #4a9eff;
-        }
-
-        /* ИСПРАВЛЕНО: Новая структура тогглов */
-        .settings-toggle {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            cursor: pointer;
-            padding: 12px 0;
-            width: 100%;
-        }
-
-        /* Текст слева */
-        .settings-toggle-text {
-            font-size: 14px;
-            color: #ddd;
-            flex: 1;
-            padding-right: 16px;
-        }
-
-        /* Контейнер для чекбокса и ползунка справа */
-        .settings-toggle input[type="checkbox"] {
-            position: absolute;
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        /* Ползунок */
-        .settings-toggle-slider {
-            position: relative;
-            display: inline-block;
-            width: 52px;
-            height: 28px;
-            background: #333;
-            border-radius: 14px;
-            transition: all 0.3s ease;
-            flex-shrink: 0;
-        }
-
-        .settings-toggle-slider:before {
-            content: '';
-            position: absolute;
-            width: 24px;
-            height: 24px;
-            background: #888;
-            border-radius: 50%;
-            top: 2px;
-            left: 2px;
-            transition: all 0.3s ease;
-        }
-
-        /* Состояние включено */
-        .settings-toggle input:checked + .settings-toggle-slider {
-            background: #4a9eff;
-        }
-
-        .settings-toggle input:checked + .settings-toggle-slider:before {
-            transform: translateX(24px);
-            background: #fff;
-        }
-
-        /* Состояние отключено */
-        .settings-toggle input:not(:checked) + .settings-toggle-slider {
-            background: #333;
-        }
-
-        .settings-toggle input:not(:checked) + .settings-toggle-slider:before {
-            background: #888;
-        }
-
-        /* Hover состояния */
-        .settings-toggle:hover .settings-toggle-slider {
-            background: #444;
-        }
-
-        .settings-toggle:hover input:checked + .settings-toggle-slider {
-            background: #3a8aef;
-        }
-
-        .settings-actions {
-            display: flex;
-            gap: 12px;
-            margin: 24px 0;
-        }
-
-        .settings-btn {
-            flex: 1;
-            padding: 12px 16px;
-            border-radius: 6px;
-            border: 1px solid #333;
-            background: #2a2a2a;
-            color: #fff;
-            font-family: 'Inter', sans-serif;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            transition: all 0.2s ease;
-        }
-
-        .settings-btn:hover {
-            background: #333;
-            border-color: #444;
-        }
-
-        .settings-btn-primary {
-            background: #4a9eff;
-            border-color: #4a9eff;
-        }
-
-        .settings-btn-primary:hover {
-            background: #3a8aef;
-            border-color: #3a8aef;
-        }
-
-        .settings-btn-icon {
-            font-size: 16px;
-        }
-
-        .settings-info {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 16px;
-            background: rgba(224, 180, 0, 0.1);
-            border: 1px solid rgba(224, 180, 0, 0.3);
-            border-radius: 8px;
-            margin: 24px 0;
-        }
-
-        .settings-info-icon {
-            font-size: 20px;
-            color: #e0b400;
-        }
-
-        .settings-info-text {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .settings-info-text strong {
-            font-size: 14px;
-            color: #e0b400;
-        }
-
-        .settings-info-text small {
-            font-size: 12px;
-            color: rgba(224, 180, 0, 0.8);
-        }
-
-        .settings-meta {
-            margin-top: 24px;
-            padding-top: 16px;
-            border-top: 1px solid #222;
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: 12px;
-        }
-
-        .settings-meta-item {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        .settings-meta-label {
-            font-size: 12px;
-            color: #888;
-        }
-
-        .settings-meta-value {
-            font-size: 14px;
-            font-weight: 500;
-            color: #fff;
-            font-family: 'JetBrains Mono', monospace;
-        }
-
-        @media (max-width: 768px) {
-            .settings-actions {
+        const styleEl = document.createElement('style')
+        styleEl.id = 'settings-panel-styles'
+        styleEl.textContent = `
+            .settings-form {
+                display: flex;
+                flex-direction: column;
+                gap: 20px;
+            }
+            
+            .visibility-group {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+            
+            .visibility-radio {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 12px;
+                background: #2a2a2a;
+                border: 1px solid #333;
+                border-radius: 6px;
+                cursor: pointer;
+                transition: all 0.2s ease;
+            }
+            
+            .visibility-radio:hover {
+                background: #333;
+                border-color: #444;
+            }
+            
+            .visibility-icon {
+                font-size: 18px;
+                width: 24px;
+                text-align: center;
+            }
+            
+            .visibility-text {
+                flex: 1;
+                display: flex;
                 flex-direction: column;
             }
-
+            
+            .visibility-text strong {
+                font-size: 14px;
+                color: #fff;
+            }
+            
+            .visibility-text small {
+                font-size: 12px;
+                color: #888;
+            }
+            
+            .range-container {
+                display: flex;
+                align-items: center;
+                gap: 16px;
+            }
+            
+            .range-container input[type="range"] {
+                flex: 1;
+                height: 4px;
+                background: #333;
+                border-radius: 2px;
+                outline: none;
+            }
+            
+            .range-value {
+                min-width: 40px;
+                text-align: center;
+                font-size: 14px;
+                font-weight: 600;
+                color: #4a9eff;
+            }
+            
+            .settings-actions {
+                display: flex;
+                gap: 12px;
+                margin: 8px 0;
+            }
+            
             .settings-meta {
-                grid-template-columns: 1fr;
+                margin-top: 20px;
+                padding-top: 16px;
+                border-top: 1px solid #222;
             }
             
-            .settings-toggle {
-                padding: 10px 0;
+            .settings-meta-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+                gap: 12px;
             }
             
-            .settings-toggle-text {
-                font-size: 13px;
-                padding-right: 12px;
+            .settings-meta-item {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
             }
             
-            .settings-toggle-slider {
-                width: 48px;
-                height: 26px;
+            .settings-meta-label {
+                font-size: 12px;
+                color: #888;
             }
             
-            .settings-toggle-slider:before {
-                width: 22px;
-                height: 22px;
+            .settings-meta-value {
+                font-size: 14px;
+                font-weight: 500;
+                color: #fff;
+                font-family: 'JetBrains Mono', monospace;
             }
             
-            .settings-toggle input:checked + .settings-toggle-slider:before {
-                transform: translateX(22px);
+            @media (max-width: 768px) {
+                .settings-actions {
+                    flex-direction: column;
+                }
+                
+                .settings-meta-grid {
+                    grid-template-columns: 1fr;
+                }
             }
-        }
-    `
-    document.head.appendChild(styleEl)
+        `
+        document.head.appendChild(styleEl)
+    }
 }
+
+// Создаем и регистрируем панель
+const settingsPanel = new SettingsPanel()
+PanelFactory.register(settingsPanel)
+
+// Экспортируем для использования в других модулях
+export { settingsPanel }

@@ -1,9 +1,11 @@
 import { subscribe, getState, setState } from './store.js'
+import { panelManager } from './panelManager.js'
+import { PanelFactory } from './panelBase.js'
 
-// импорт модулей (они сами регистрируются)
+// Импорт конкретных панелей
 import './modules/toolsPanel.js'
 import './modules/usersPanel.js'
-import './modules/settingsPanel.js' // Добавляем импорт панели настроек
+import './modules/settingsPanel.js'
 
 let uiInitialized = false
 let unsubscribeRole = null
@@ -141,12 +143,25 @@ function applyGlobalStyles() {
         }
         
         .users-list {
+            max-height: calc(100vh - 200px) !important;
+            min-height: 200px;
+        }
+        .user-item {
+            min-height: auto !important;
+            overflow: visible !important;
+        }
+    
+        .user-container {
             display: flex;
             flex-direction: column;
-            gap: 6px;
-            padding: 6px;
+            gap: 12px;
         }
-        
+    
+        .user-role-select {
+            width: 100% !important;
+            box-sizing: border-box !important;
+            margin-top: 8px;
+        }
         .user-row {
             background: #1a1a1a;
             border: 1px solid #222;
@@ -314,8 +329,63 @@ function applyGlobalStyles() {
         }
         
         .panel-content {
-            flex: 1;
-            overflow: hidden;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+         .role-select-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 8px;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 6px;
+        }
+        
+        .role-select-label {
+            font-size: 12px;
+            color: #ccc;
+            margin-bottom: 4px;
+        }
+        
+        /* Убираем старые стили для селектора в строке */
+        .user-role-container .role-select {
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+        
+        /* Адаптивность для селекторов */
+        @media (max-width: 768px) {
+            .user-role-container {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .role-select {
+                min-width: 100%;
+                margin-top: 8px;
+            }
+        }
+        /* Гарантируем видимость всех элементов */
+        .user-name, .user-id {
+            overflow: visible !important;
+            text-overflow: clip !important;
+            white-space: normal !important;
+        }
+        
+        @media (max-width: 768px) {
+            .user-item {
+                margin-bottom: 12px;
+            }
+            
+            .user-name {
+                font-size: 14px !important;
+            }
+            
+            .user-role-select {
+                font-size: 13px !important;
+            }
         }
     `
     document.head.appendChild(styles)
@@ -529,13 +599,10 @@ function createPanel(side) {
 
             // Проверяем доступность модуля для роли
             if (module.requiredRoles && Array.isArray(module.requiredRoles)) {
-                // Если указаны requiredRoles, проверяем вхождение
                 return module.requiredRoles.includes(userRole)
             } else if (module.requiredRole) {
-                // Поддержка старого формата (одна роль)
                 return module.requiredRole === userRole
             }
-            // Если ограничений нет, модуль доступен всем
             return true
         })
     }
