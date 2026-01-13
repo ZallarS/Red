@@ -32,6 +32,22 @@ function colorFromId(id) {
     return `hsl(${Math.abs(hash) % 360}, 80%, 60%)`
 }
 
+// ===================== ROOM SETTINGS DEFAULTS =====================
+const DEFAULT_ROOM_SETTINGS = {
+    name: 'Новая комната',
+    description: '',
+    visibility: 'public', // public, private, password-protected
+    password: '',
+    maxUsers: 20,
+    allowGuests: true,
+    gridEnabled: true,
+    snapEnabled: true,
+    defaultRole: 'viewer',
+    createdAt: Date.now(),
+    owner: null,
+    currentUsers: 0
+}
+
 // ===================== ROOM FILES =====================
 function roomFile(roomId) {
     return path.join(MAPS_DIR, `room_${roomId}.json`)
@@ -58,7 +74,12 @@ function loadRoom(roomId) {
         map: new Map(Object.entries(raw.map || {})),
         roles: new Map(Object.entries(raw.roles || {})),
         users: new Map(),
-        autosaveTimer: null
+        autosaveTimer: null,
+        settings: {
+            ...DEFAULT_ROOM_SETTINGS,
+            ...raw.settings,
+            currentUsers: 0
+        }
     }
 
     rooms.set(roomId, room)
@@ -66,11 +87,17 @@ function loadRoom(roomId) {
 }
 
 function saveRoom(room) {
+    const settingsToSave = {
+        ...room.settings,
+        currentUsers: room.users.size // Сохраняем текущее количество пользователей
+    }
+
     fs.writeFileSync(
         roomFile(room.id),
         JSON.stringify({
             map: Object.fromEntries(room.map),
-            roles: Object.fromEntries(room.roles)
+            roles: Object.fromEntries(room.roles),
+            settings: settingsToSave
         }, null, 2)
     )
 }
@@ -86,6 +113,9 @@ function broadcastRoom(room, msg, except = null) {
 }
 
 function broadcastRoomUsers(room) {
+    // Обновляем количество пользователей в настройках
+    room.settings.currentUsers = room.users.size
+
     const userList = [...room.roles.entries()].map(([userId, role]) => {
         const u = users.get(userId)
         return {
@@ -174,12 +204,23 @@ wss.on('connection', ws => {
 
         // ===== ROOM LIST =====
         if (msg.type === 'room-list') {
+            const roomList = listRoomIds().map(id => {
+                const roomData = loadRoom(id)
+                if (!roomData) return null
+
+                return {
+                    id,
+                    users: roomData.users.size,
+                    settings: {
+                        ...roomData.settings,
+                        currentUsers: roomData.users.size
+                    }
+                }
+            }).filter(Boolean)
+
             ws.send(JSON.stringify({
                 type: 'room-list-response',
-                rooms: listRoomIds().map(id => ({
-                    id,
-                    users: rooms.get(id)?.users.size || 0
-                }))
+                rooms: roomList
             }))
             return
         }
@@ -187,13 +228,26 @@ wss.on('connection', ws => {
         // ===== ROOM CREATE =====
         if (msg.type === 'room-create') {
             const roomId = crypto.randomUUID().slice(0, 6)
+            const userSettings = msg.settings || {}
 
             const room = {
                 id: roomId,
                 map: new Map(),
                 roles: new Map([[userId, 'admin']]),
                 users: new Map(),
-                autosaveTimer: null
+                autosaveTimer: null,
+                settings: {
+                    ...DEFAULT_ROOM_SETTINGS,
+                    ...userSettings,
+                    createdAt: Date.now(),
+                    owner: userId,
+                    currentUsers: 1
+                }
+            }
+
+            // Если есть имя комнаты от пользователя
+            if (userSettings.name) {
+                room.settings.name = userSettings.name
             }
 
             rooms.set(roomId, room)
@@ -206,9 +260,64 @@ wss.on('connection', ws => {
             return
         }
 
+        // ===== ROOM SETTINGS UPDATE =====
+        if (msg.type === 'room-settings-update') {
+            const { roomId, settings } = msg
+
+            if (!roomId || !settings) {
+                ws.send(JSON.stringify({
+                    type: 'error',
+                    message: 'Invalid settings update request'
+                }))
+                return
+            }
+
+            const targetRoom = loadRoom(roomId)
+            if (!targetRoom) {
+                ws.send(JSON.stringify({
+                    type: 'error',
+                    message: 'Room not found'
+                }))
+                return
+            }
+
+            // Проверяем права (только админ или владелец)
+            if (!isAdmin(targetRoom, userId) && targetRoom.settings.owner !== userId) {
+                ws.send(JSON.stringify({
+                    type: 'error',
+                    message: 'Permission denied'
+                }))
+                return
+            }
+
+            // Обновляем настройки
+            targetRoom.settings = {
+                ...targetRoom.settings,
+                ...settings
+            }
+
+            saveRoom(targetRoom)
+
+            // Отправляем подтверждение
+            ws.send(JSON.stringify({
+                type: 'room-settings-updated',
+                roomId,
+                settings: targetRoom.settings
+            }))
+
+            // Уведомляем всех в комнате
+            broadcastRoom(targetRoom, {
+                type: 'room-settings-changed',
+                settings: targetRoom.settings
+            })
+
+            return
+        }
+
         // ===== ROOM JOIN =====
         if (msg.type === 'room-join') {
             const roomId = String(msg.roomId || '')
+            const password = msg.password || ''
             room = loadRoom(roomId)
 
             if (!room) {
@@ -219,20 +328,55 @@ wss.on('connection', ws => {
                 return
             }
 
+            // Проверка пароля если требуется
+            if (room.settings.visibility === 'password-protected') {
+                if (room.settings.password && room.settings.password !== password) {
+                    ws.send(JSON.stringify({
+                        type: 'error',
+                        message: 'Incorrect password'
+                    }))
+                    return
+                }
+            }
+
+            // Проверка приватности
+            if (room.settings.visibility === 'private') {
+                // В приватных комнатах можно присоединиться только по приглашению
+                // (здесь можно добавить логику приглашений)
+                if (!room.roles.has(userId)) {
+                    ws.send(JSON.stringify({
+                        type: 'error',
+                        message: 'This room is private'
+                    }))
+                    return
+                }
+            }
+
+            // Проверка максимального количества пользователей
+            if (room.users.size >= room.settings.maxUsers) {
+                ws.send(JSON.stringify({
+                    type: 'error',
+                    message: 'Room is full'
+                }))
+                return
+            }
+
             if (!room.roles.has(userId)) {
-                room.roles.set(userId, 'viewer')
+                room.roles.set(userId, room.settings.defaultRole || 'viewer')
                 saveRoom(room)
             }
 
             room.users.set(ws, userId)
+            room.settings.currentUsers = room.users.size
 
-            // 🔥 Отправляем snapshot с userId
+            // 🔥 Отправляем snapshot с userId и настройками
             ws.send(JSON.stringify({
                 type: 'room-snapshot',
                 roomId,
-                userId: userId, // 🔥 ВАЖНО: отправляем userId клиенту
+                userId: userId,
                 role: room.roles.get(userId),
-                map: Object.fromEntries(room.map)
+                map: Object.fromEntries(room.map),
+                settings: room.settings
             }))
 
             // 🔥 Отправляем обновленный список пользователей ВСЕМ
@@ -247,6 +391,7 @@ wss.on('connection', ws => {
 
                 // Удаляем пользователя из комнаты
                 room.users.delete(ws)
+                room.settings.currentUsers = room.users.size
 
                 // Если пользователей не осталось, можно очистить комнату из памяти
                 if (room.users.size === 0) {
@@ -383,6 +528,7 @@ wss.on('connection', ws => {
         if (room && userId) {
             console.log(`🔌 WebSocket закрыт, удаляем пользователя ${userId} из комнаты ${room.id}`)
             room.users.delete(ws)
+            room.settings.currentUsers = room.users.size
 
             // Если пользователей не осталось, очищаем комнату из памяти
             if (room.users.size === 0) {

@@ -3,6 +3,7 @@ import { subscribe, getState, setState } from './store.js'
 // импорт модулей (они сами регистрируются)
 import './modules/toolsPanel.js'
 import './modules/usersPanel.js'
+import './modules/settingsPanel.js' // Добавляем импорт панели настроек
 
 let uiInitialized = false
 let unsubscribeRole = null
@@ -229,6 +230,50 @@ function applyGlobalStyles() {
             font-weight: 600;
             margin-left: 8px;
         }
+
+        /* Стили для переключателя панелей */
+        .panel-tabs {
+            display: flex;
+            background: #1a1a1a;
+            border-bottom: 1px solid #222;
+            padding: 8px 12px;
+            gap: 4px;
+        }
+        
+        .panel-tab {
+            padding: 8px 16px;
+            background: transparent;
+            color: #888;
+            border: none;
+            border-radius: 6px;
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .panel-tab:hover {
+            background: #222;
+            color: #ccc;
+        }
+        
+        .panel-tab.active {
+            background: #2a2a2a;
+            color: #4a9eff;
+        }
+        
+        .panel-tab-icon {
+            font-size: 16px;
+        }
+        
+        .panel-content {
+            flex: 1;
+            overflow: hidden;
+        }
     `
     document.head.appendChild(styles)
 }
@@ -256,7 +301,7 @@ function createPanel(side) {
         position: 'fixed',
         top: '0',
         [side]: '0',
-        width: '280px',
+        width: '320px', // Увеличиваем ширину для настроек
         height: '100%',
         background: '#0f0f0f',
         display: 'flex',
@@ -302,15 +347,14 @@ function createPanel(side) {
         edge.style.color = '#888'
     })
 
-    // Заголовок
+    // Заголовок с табами для правой панели
     const header = document.createElement('div')
     header.style.cssText = `
-        padding: 20px 16px 12px 16px;
-        border-bottom: 1px solid #222;
-        background: #1a1a1a;
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        background: #1a1a1a;
+        border-bottom: 1px solid #222;
+        flex-shrink: 0;
     `
 
     const titleRow = document.createElement('div')
@@ -318,6 +362,7 @@ function createPanel(side) {
         display: flex;
         justify-content: space-between;
         align-items: center;
+        padding: 16px;
     `
 
     const title = document.createElement('div')
@@ -357,12 +402,20 @@ function createPanel(side) {
     titleRow.append(title, closeBtn)
     header.appendChild(titleRow)
 
+    // Табы для правой панели
+    let tabsContainer = null
+    if (side === 'right') {
+        tabsContainer = document.createElement('div')
+        tabsContainer.className = 'panel-tabs'
+        header.appendChild(tabsContainer)
+    }
+
     // Контент
     const content = document.createElement('div')
     Object.assign(content.style, {
         flex: '1',
         overflow: 'auto',
-        padding: '16px'
+        position: 'relative'
     })
 
     panel.append(header, content)
@@ -380,25 +433,11 @@ function createPanel(side) {
     edge.onclick = () => toggle(true)
 
     let cleanupFunction = null
+    let currentModule = null
 
-    // Рендер панели
-    function renderPanel(state) {
-        const panelState = state.panels[side]
-        const moduleId = panelState.active
-
-        // Получаем модуль из глобального реестра
-        const module = window.__canvasverse_panelModules.get(moduleId)
-
-        if (!module) {
-            console.error(`❌ Модуль панели не найден: ${moduleId}`)
-            return
-        }
-
-        // Видимость панели
-        panel.style.display = panelState.open ? 'flex' : 'none'
-        edge.style.display = panelState.open ? 'none' : 'flex'
-
-        title.textContent = side === 'left' ? 'Инструменты' : 'Управление'
+    // Функция для переключения между модулями
+    function switchModule(moduleId) {
+        if (currentModule === moduleId) return
 
         // Очищаем предыдущий рендер
         if (cleanupFunction) {
@@ -408,11 +447,73 @@ function createPanel(side) {
 
         content.innerHTML = ''
 
+        // Получаем модуль из глобального реестра
+        const module = window.__canvasverse_panelModules.get(moduleId)
+
+        if (!module) {
+            console.error(`❌ Модуль панели не найден: ${moduleId}`)
+            return
+        }
+
+        // Обновляем заголовок
+        title.textContent = module.title || 'Панель'
+
         // Рендерим модуль
         if (typeof module.render === 'function') {
             cleanupFunction = module.render(content)
         } else {
             console.error(`❌ Модуль ${moduleId} не имеет метода render`)
+        }
+
+        currentModule = moduleId
+
+        // Обновляем состояние
+        setState({
+            panels: {
+                [side]: {
+                    open: true,
+                    active: moduleId
+                }
+            }
+        })
+    }
+
+    // Рендер панели
+    function renderPanel(state) {
+        const panelState = state.panels[side]
+        const moduleId = panelState.active || (side === 'left' ? 'tools' : 'users')
+
+        // Видимость панели
+        panel.style.display = panelState.open ? 'flex' : 'none'
+        edge.style.display = panelState.open ? 'none' : 'flex'
+
+        // Для правой панели рендерим табы
+        if (side === 'right' && tabsContainer) {
+            tabsContainer.innerHTML = ''
+
+            const availableModules = ['users', 'settings']
+            availableModules.forEach(moduleKey => {
+                const module = window.__canvasverse_panelModules.get(moduleKey)
+                if (!module) return
+
+                const tab = document.createElement('button')
+                tab.className = `panel-tab ${moduleKey === moduleId ? 'active' : ''}`
+                tab.innerHTML = `
+                    <span class="panel-tab-icon">${
+                    moduleKey === 'users' ? '👥' :
+                        moduleKey === 'settings' ? '⚙️' : ''
+                }</span>
+                    <span>${module.title}</span>
+                `
+
+                tab.addEventListener('click', () => switchModule(moduleKey))
+                tabsContainer.appendChild(tab)
+            })
+        }
+
+        // Переключаем модуль если нужно
+        if (currentModule !== moduleId) {
+            switchModule(moduleId)
         }
     }
 
@@ -507,6 +608,12 @@ export function cleanupUI() {
     const styleTag = document.getElementById('editor-ui-styles')
     if (styleTag && styleTag.parentNode) {
         styleTag.parentNode.removeChild(styleTag)
+    }
+
+    // Удаляем стили панели настроек
+    const settingsStyleTag = document.getElementById('settings-panel-styles')
+    if (settingsStyleTag && settingsStyleTag.parentNode) {
+        settingsStyleTag.parentNode.removeChild(settingsStyleTag)
     }
 
     // Удаляем классы ролей

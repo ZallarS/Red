@@ -1,5 +1,3 @@
-// editor/editor.js
-
 import { getRoute, goToLobby } from './router.js'
 import { mountLobby, unmountLobby, onRoomCreated } from './lobby.js'
 import { connect, on, send, getStatus } from './ws.js'
@@ -48,7 +46,7 @@ function stopEditor() {
     console.log('✅ Редактор остановлен')
 }
 
-function handleRoute() {
+function handleRoute(event) {
     const route = getRoute()
     console.log('📍 Маршрут изменен:', route)
 
@@ -77,7 +75,15 @@ function handleRoute() {
         unmountLobby()
         setTimeout(() => {
             console.log(`🔗 Присоединяемся к комнате: ${route.roomId}`)
-            send({ type: 'room-join', roomId: route.roomId })
+
+            // Проверяем, есть ли пароль в деталях события
+            const password = event?.detail?.password || ''
+
+            send({
+                type: 'room-join',
+                roomId: route.roomId,
+                password: password
+            })
         }, 100)
     }
 }

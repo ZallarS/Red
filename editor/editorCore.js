@@ -13,13 +13,14 @@ import { createDebugOverlay } from './debug.js'
 import { initDrawing } from './drawing.js'
 import { applyAction } from './actions.js'
 import { initInput } from './input.js'
+import { loadSettingsToUI } from './roomSettings.js' // Добавляем импорт
 
 const CAMERA_KEY_PREFIX = 'editor-camera-room-'
 
 export function initEditor(snapshot) {
-    const { roomId, role, map, userId } = snapshot
+    const { roomId, role, map, userId, settings } = snapshot // Добавляем settings
 
-    console.log('🎮 Initializing editor:', { roomId, role, userId })
+    console.log('🎮 Initializing editor:', { roomId, role, userId, settings })
 
     const users = new Map()
     const cursors = new Map()
@@ -76,11 +77,18 @@ export function initEditor(snapshot) {
     window.__canvasverse_uiInitialized = true
     console.log('🎨 Пользовательский интерфейс инициализирован')
 
+    // ===== НАСТРОЙКИ КОМНАТЫ =====
+    // Загружаем настройки комнаты в UI
+    if (settings) {
+        loadSettingsToUI(settings)
+    }
+
     // Устанавливаем начальные значения
     setState({
         userId: userId,
         role: role,
-        users: []
+        users: [],
+        roomSettings: settings || null // Сохраняем настройки в store
     })
 
     console.log(`👤 Пользователь ${userId?.substring(0, 8)} вошёл с ролью ${role}`)
@@ -146,6 +154,14 @@ export function initEditor(snapshot) {
                 })
                 break
 
+            case 'room-settings-changed':
+                console.log('⚙️ Настройки комнаты обновлены:', msg.settings)
+                // Обновляем настройки в UI
+                loadSettingsToUI(msg.settings)
+                // Обновляем в store
+                setState({ roomSettings: msg.settings })
+                break
+
             case 'error':
                 console.error(`❌ Ошибка сервера: ${msg.message}`)
                 break
@@ -167,7 +183,12 @@ export function initEditor(snapshot) {
     // ===== RENDER LOOP =====
     function loop() {
         render(ctx, canvas, cursors, softLocks)
-        if (uiState.grid) drawGrid(ctx, canvas)
+
+        // Проверяем настройки комнаты для включения сетки
+        const currentSettings = getState().roomSettings
+        if (currentSettings?.gridEnabled !== false) {
+            drawGrid(ctx, canvas)
+        }
 
         // Обновляем состояние из store
         uiState = getState()
@@ -214,6 +235,7 @@ export function initEditor(snapshot) {
                 users: [],
                 userId: null,
                 role: 'viewer',
+                roomSettings: null, // Сбрасываем настройки комнаты
                 panels: {
                     left: { open: true, active: 'tools' },
                     right: { open: true, active: 'users' }

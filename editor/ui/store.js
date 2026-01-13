@@ -9,6 +9,9 @@ const state = {
     userId: null,
     role: 'viewer',
 
+    // Новое поле для настроек комнаты
+    roomSettings: null,
+
     panels: {
         left: {
             open: true,
@@ -34,6 +37,7 @@ export function getState() {
 export function setState(patch) {
     const oldRole = state.role
     const oldUserId = state.userId
+    const oldRoomSettings = state.roomSettings
 
     // Глубокое обновление panels если нужно
     if (patch.panels) {
@@ -55,6 +59,19 @@ export function setState(patch) {
 
     if (patch.userId !== undefined && patch.userId !== oldUserId) {
         console.log('🆔 ID пользователя изменено:', { from: oldUserId, to: patch.userId })
+    }
+
+    if (patch.roomSettings !== undefined && patch.roomSettings !== oldRoomSettings) {
+        console.log('⚙️ Настройки комнаты обновлены:', patch.roomSettings)
+
+        // Применяем настройки сетки и привязки если они изменились
+        if (patch.roomSettings?.gridEnabled !== undefined) {
+            state.grid = patch.roomSettings.gridEnabled
+        }
+
+        if (patch.roomSettings?.snapEnabled !== undefined) {
+            state.snapping = patch.roomSettings.snapEnabled
+        }
     }
 
     // Уведомляем слушателей
