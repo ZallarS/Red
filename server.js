@@ -23,6 +23,7 @@ const rooms = new Map()
 
 // ===================== USERS (GLOBAL, PERSISTENT) =====================
 const users = new Map()
+const userStatuses = new Map() // userId -> { lastActivity, isOnline }
 
 function colorFromId(id) {
     let hash = 0
@@ -73,7 +74,7 @@ function loadRoom(roomId) {
         id: roomId,
         map: new Map(Object.entries(raw.map || {})),
         roles: new Map(Object.entries(raw.roles || {})),
-        users: new Map(),
+        users: new Map(), // WebSocket -> userId
         autosaveTimer: null,
         settings: {
             ...DEFAULT_ROOM_SETTINGS,
@@ -102,6 +103,61 @@ function saveRoom(room) {
     )
 }
 
+// ===================== USER STATUS HELPERS =====================
+function updateUserOnlineStatus(userId, isOnline) {
+    if (!userStatuses.has(userId)) {
+        userStatuses.set(userId, {
+            lastActivity: Date.now(),
+            isOnline: false
+        })
+    }
+
+    const status = userStatuses.get(userId)
+    status.isOnline = isOnline
+    if (isOnline) {
+        status.lastActivity = Date.now()
+    }
+}
+
+function getUserStatus(userId) {
+    if (!userStatuses.has(userId)) {
+        return {
+            status: 'offline',
+            lastActivity: null
+        }
+    }
+
+    const userStatus = userStatuses.get(userId)
+    const now = Date.now()
+
+    if (!userStatus.isOnline) {
+        return {
+            status: 'offline',
+            lastActivity: userStatus.lastActivity
+        }
+    }
+
+    // Если онлайн, проверяем активность
+    const timeSinceActivity = now - userStatus.lastActivity
+
+    if (timeSinceActivity < 30000) { // 30 секунд
+        return {
+            status: 'online',
+            lastActivity: userStatus.lastActivity
+        }
+    } else if (timeSinceActivity < 300000) { // 5 минут
+        return {
+            status: 'idle',
+            lastActivity: userStatus.lastActivity
+        }
+    } else {
+        return {
+            status: 'away',
+            lastActivity: userStatus.lastActivity
+        }
+    }
+}
+
 // ===================== ROOM UTILS =====================
 function broadcastRoom(room, msg, except = null) {
     const data = JSON.stringify(msg)
@@ -116,17 +172,33 @@ function broadcastRoomUsers(room) {
     // Обновляем количество пользователей в настройках
     room.settings.currentUsers = room.users.size
 
-    const userList = [...room.roles.entries()].map(([userId, role]) => {
+    // Получаем ВСЕХ пользователей комнаты (из roles), включая офлайн
+    const allUserIds = Array.from(room.roles.keys())
+    const userList = allUserIds.map(userId => {
         const u = users.get(userId)
+        const role = room.roles.get(userId)
+        const status = getUserStatus(userId)
+
+        // Проверяем, есть ли активное соединение
+        const isCurrentlyInRoom = Array.from(room.users.values()).includes(userId)
+
         return {
             id: userId,
             name: u?.name || 'Unknown',
             color: u?.color || '#888',
-            role
+            role,
+            status: status.status,
+            lastActivity: status.lastActivity,
+            isOnline: status.status !== 'offline',
+            isCurrentlyConnected: isCurrentlyInRoom
         }
     })
 
-    console.log('📤 Broadcasting room-users:', userList.map(u => ({ id: u.id, role: u.role })))
+    console.log('📤 Broadcasting room-users:', userList.map(u => ({
+        id: u.id,
+        role: u.role,
+        status: u.status
+    })))
 
     broadcastRoom(room, {
         type: 'room-users',
@@ -164,7 +236,8 @@ function applyRoomAction(room, action) {
 const VALID_ROLES = new Set(['owner', 'admin', 'editor', 'viewer'])
 
 function isAdmin(room, userId) {
-    return room.roles.get(userId) === 'admin'
+    const role = room.roles.get(userId)
+    return role === 'admin' || role === 'owner'
 }
 
 // ===================== WS =====================
@@ -192,6 +265,9 @@ wss.on('connection', ws => {
                     color: colorFromId(userId)
                 })
             }
+
+            // Инициализируем статус пользователя
+            updateUserOnlineStatus(userId, true)
 
             ws.send(JSON.stringify({
                 type: 'auth-ok',
@@ -341,8 +417,6 @@ wss.on('connection', ws => {
 
             // Проверка приватности
             if (room.settings.visibility === 'private') {
-                // В приватных комнатах можно присоединиться только по приглашению
-                // (здесь можно добавить логику приглашений)
                 if (!room.roles.has(userId)) {
                     ws.send(JSON.stringify({
                         type: 'error',
@@ -361,15 +435,20 @@ wss.on('connection', ws => {
                 return
             }
 
+            // Если пользователь еще не в списке ролей, добавляем с ролью по умолчанию
             if (!room.roles.has(userId)) {
                 room.roles.set(userId, room.settings.defaultRole || 'viewer')
                 saveRoom(room)
             }
 
+            // Добавляем пользователя в активные соединения
             room.users.set(ws, userId)
             room.settings.currentUsers = room.users.size
 
-            // 🔥 Отправляем snapshot с userId и настройками
+            // Обновляем статус пользователя
+            updateUserOnlineStatus(userId, true)
+
+            // Отправляем snapshot
             ws.send(JSON.stringify({
                 type: 'room-snapshot',
                 roomId,
@@ -379,24 +458,26 @@ wss.on('connection', ws => {
                 settings: room.settings
             }))
 
-            // 🔥 Отправляем обновленный список пользователей ВСЕМ
+            // Отправляем обновленный список пользователей ВСЕМ
             broadcastRoomUsers(room)
             return
         }
 
-        // 🔥 ===== ROOM LEAVE =====
+        // ===== ROOM LEAVE =====
         if (msg.type === 'room-leave') {
             if (room && userId) {
                 console.log(`🚪 Пользователь ${userId} покидает комнату ${room.id}`)
 
-                // Удаляем пользователя из комнаты
+                // Удаляем пользователя из активных соединений
                 room.users.delete(ws)
                 room.settings.currentUsers = room.users.size
 
-                // Если пользователей не осталось, можно очистить комнату из памяти
+                // Обновляем статус пользователя
+                updateUserOnlineStatus(userId, false)
+
+                // Если пользователей не осталось, очищаем комнату из памяти
                 if (room.users.size === 0) {
                     console.log(`🏁 Комната ${room.id} пуста, очищаем из памяти`)
-                    // Сохраняем перед удалением
                     saveRoom(room)
                     rooms.delete(room.id)
                 } else {
@@ -417,6 +498,13 @@ wss.on('connection', ws => {
         }
 
         if (!room) return
+
+        // ===== USER ACTIVITY =====
+        if (msg.type === 'user-activity') {
+            // Обновляем активность пользователя
+            updateUserOnlineStatus(userId, true)
+            return
+        }
 
         // ===== ROLE SET =====
         if (msg.type === 'role-set') {
@@ -502,7 +590,7 @@ wss.on('connection', ws => {
             room.roles.set(targetUserId, role)
             saveRoom(room)
 
-            // 🔥 Отправляем успешный ответ
+            // Отправляем успешный ответ
             ws.send(JSON.stringify({
                 type: 'role-set-response',
                 success: true,
@@ -510,7 +598,7 @@ wss.on('connection', ws => {
                 role
             }))
 
-            // 🔥 ОТПРАВЛЯЕМ ОБНОВЛЁННЫЙ СПИСОК ВСЕМ ПОЛЬЗОВАТЕЛЯМ
+            // ОТПРАВЛЯЕМ ОБНОВЛЁННЫЙ СПИСОК ВСЕМ ПОЛЬЗОВАТЕЛЯМ
             broadcastRoomUsers(room)
             return
         }
@@ -518,6 +606,10 @@ wss.on('connection', ws => {
         // ===== CURSOR =====
         if (msg.type === 'cursor') {
             const u = users.get(userId)
+
+            // Обновляем активность пользователя
+            updateUserOnlineStatus(userId, true)
+
             broadcastRoom(room, {
                 type: 'cursor',
                 id: userId,
@@ -535,6 +627,9 @@ wss.on('connection', ws => {
         if (msg.type === 'action') {
             const role = room.roles.get(userId)
             if (role !== 'admin' && role !== 'editor') return
+
+            // Обновляем активность пользователя
+            updateUserOnlineStatus(userId, true)
 
             applyRoomAction(room, msg.action)
             scheduleAutosave(room)
@@ -554,8 +649,13 @@ wss.on('connection', ws => {
     ws.on('close', () => {
         if (room && userId) {
             console.log(`🔌 WebSocket закрыт, удаляем пользователя ${userId} из комнаты ${room.id}`)
+
+            // Удаляем пользователя из активных соединений
             room.users.delete(ws)
             room.settings.currentUsers = room.users.size
+
+            // Обновляем статус пользователя на офлайн
+            updateUserOnlineStatus(userId, false)
 
             // Если пользователей не осталось, очищаем комнату из памяти
             if (room.users.size === 0) {
@@ -563,12 +663,18 @@ wss.on('connection', ws => {
                 saveRoom(room)
                 rooms.delete(room.id)
             } else {
+                // Обновляем список пользователей для оставшихся
                 broadcastRoomUsers(room)
             }
         }
 
-        // Удаляем пользователя из глобального списка при полном отключении
-        users.delete(userId)
+        // Не удаляем пользователя из глобального списка, чтобы он оставался в истории
+        // Удаляем только если пользователь больше нигде не используется
+        // (это упрощенная логика, в реальности нужна более сложная)
+    })
+
+    ws.on('error', (error) => {
+        console.error(`❌ WebSocket ошибка для пользователя ${userId}:`, error)
     })
 })
 
@@ -582,4 +688,5 @@ app.get(/.*/, (req, res) => {
 // ===================== START =====================
 server.listen(PORT, () => {
     console.log(`🚀 Server running on http://127.0.0.1:${PORT}`)
+    console.log(`📊 Поддерживаются статусы пользователей: online, idle, away, offline`)
 })

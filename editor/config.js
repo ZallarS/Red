@@ -24,7 +24,48 @@ export const COLORS = {
     owner: '#ff6b35',
     admin: '#e0b400',
     editor: '#4a9eff',
-    viewer: '#888'
+    viewer: '#888',
+    // Новые цвета для статусов
+    online: '#20c997',
+    offline: '#888',
+    away: '#ffc107',
+    idle: '#ffc107'
+}
+
+// Статусы пользователей
+export const USER_STATUS = {
+    ONLINE: 'online',
+    OFFLINE: 'offline',
+    AWAY: 'away',
+    IDLE: 'idle'
+}
+
+// Метаданные статусов
+export const STATUS_META = {
+    online: {
+        label: 'В сети',
+        icon: '🟢',
+        color: COLORS.online,
+        description: 'Пользователь активен'
+    },
+    offline: {
+        label: 'Не в сети',
+        icon: '⚫',
+        color: COLORS.offline,
+        description: 'Пользователь вышел'
+    },
+    away: {
+        label: 'Отошёл',
+        icon: '🟡',
+        color: COLORS.away,
+        description: 'Пользователь неактивен'
+    },
+    idle: {
+        label: 'Неактивен',
+        icon: '🟠',
+        color: COLORS.idle,
+        description: 'Бездействует'
+    }
 }
 
 // Роли пользователей
@@ -116,7 +157,9 @@ export const LIMITS = {
     AUTO_SAVE_DELAY: 3000,
     MAX_ROOM_NAME_LENGTH: 50,
     MAX_ROOM_DESCRIPTION_LENGTH: 200,
-    MIN_PASSWORD_LENGTH: 4
+    MIN_PASSWORD_LENGTH: 4,
+    USER_IDLE_TIMEOUT: 30000, // 30 секунд неактивности
+    USER_AWAY_TIMEOUT: 300000 // 5 минут неактивности
 }
 
 // Горячие клавиши
@@ -144,7 +187,11 @@ export const MESSAGES = {
     OWNER_IMMUNE: 'Нельзя изменить роль владельца',
     ROOM_FULL: 'Комната заполнена',
     INCORRECT_PASSWORD: 'Неверный пароль',
-    ROOM_PRIVATE: 'Эта комната приватная'
+    ROOM_PRIVATE: 'Эта комната приватная',
+    USER_WENT_OFFLINE: ' вышел из комнаты',
+    USER_CAME_ONLINE: ' вернулся в комнату',
+    USER_IS_AWAY: ' отошёл',
+    USER_IS_IDLE: ' неактивен'
 }
 
 // Конфигурация WebSocket
@@ -153,7 +200,8 @@ export const WS_CONFIG = {
     RECONNECT_INTERVAL: 3000,
     MAX_RECONNECT_ATTEMPTS: 5,
     PING_INTERVAL: 2000,
-    CONNECTION_TIMEOUT: 15000
+    CONNECTION_TIMEOUT: 15000,
+    USER_ACTIVITY_CHECK_INTERVAL: 5000 // Проверка активности каждые 5 секунд
 }
 
 // Конфигурация панелей
@@ -199,7 +247,9 @@ export const ROOM_CONFIG = {
         allowGuests: true,
         gridEnabled: true,
         snapEnabled: true,
-        defaultRole: 'viewer'
+        defaultRole: 'viewer',
+        showUserStatus: true,
+        showLastSeen: true
     },
     VISIBILITY_OPTIONS: {
         public: { label: 'Публичная', icon: '🌐', description: 'Любой может присоединиться' },
@@ -214,5 +264,6 @@ export const DEBUG_CONFIG = {
     UPDATE_INTERVAL: 1000,
     SHOW_PERFORMANCE: true,
     SHOW_NETWORK: true,
-    SHOW_SYSTEM: true
+    SHOW_SYSTEM: true,
+    SHOW_USER_STATUS: true
 }

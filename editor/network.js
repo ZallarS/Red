@@ -34,6 +34,9 @@ export const WS_PROTOCOL = {
     // ===== ПОЛЬЗОВАТЕЛИ И КУРСОРЫ =====
     CURSOR: 'cursor',
     CURSOR_LEAVE: 'cursor-leave',
+    USER_STATUS: 'user-status', // Новый протокол для статусов пользователей
+    USER_ACTIVITY: 'user-activity', // Активность пользователя
+    USER_PRESENCE: 'user-presence', // Присутствие пользователя
 
     // ===== ДЕЙСТВИЯ РЕДАКТОРА =====
     ACTION: 'action',
@@ -73,6 +76,8 @@ export class NetworkManager {
         this.userId = this.getUserId()
         this.pingInterval = null
         this.lastPing = null
+        this.activityCheckInterval = null
+        this.lastActivity = Date.now()
     }
 
     // ===== УПРАВЛЕНИЕ СОЕДИНЕНИЕМ =====
@@ -102,6 +107,7 @@ export class NetworkManager {
     disconnect() {
         if (this.ws) {
             this.stopPing()
+            this.stopActivityCheck()
             this.ws.close()
             this.ws = null
         }
@@ -128,6 +134,7 @@ export class NetworkManager {
         this.setStatus('online')
         this.reconnectAttempts = 0
         this.startPing()
+        this.startActivityCheck()
         this.authenticate()
     }
 
@@ -147,6 +154,9 @@ export class NetworkManager {
                 case WS_PROTOCOL.ERROR:
                     this.handleError(message)
                     break
+                case WS_PROTOCOL.USER_ACTIVITY:
+                    this.handleUserActivity(message)
+                    break
             }
 
         } catch (error) {
@@ -158,6 +168,7 @@ export class NetworkManager {
         console.log('🔌 WebSocket отключен')
         this.setStatus('reconnecting')
         this.stopPing()
+        this.stopActivityCheck()
         this.scheduleReconnect()
     }
 
@@ -204,6 +215,31 @@ export class NetworkManager {
     handlePong(message) {
         this.lastPing = Date.now() - message.timestamp
         this.emit('ping', this.lastPing)
+    }
+
+    // ===== ОТСЛЕЖИВАНИЕ АКТИВНОСТИ =====
+
+    startActivityCheck() {
+        this.stopActivityCheck()
+        this.activityCheckInterval = setInterval(() => {
+            this.send({
+                type: WS_PROTOCOL.USER_ACTIVITY,
+                timestamp: Date.now(),
+                lastActivity: this.lastActivity
+            })
+        }, WS_CONFIG.USER_ACTIVITY_CHECK_INTERVAL)
+    }
+
+    stopActivityCheck() {
+        if (this.activityCheckInterval) {
+            clearInterval(this.activityCheckInterval)
+            this.activityCheckInterval = null
+        }
+    }
+
+    handleUserActivity(message) {
+        this.lastActivity = Date.now()
+        this.emit('activity', message)
     }
 
     // ===== ОТПРАВКА И ПРИЕМ СООБЩЕНИЙ =====
@@ -276,6 +312,14 @@ export class NetworkManager {
         return this.lastPing
     }
 
+    getLastActivity() {
+        return this.lastActivity
+    }
+
+    updateActivity() {
+        this.lastActivity = Date.now()
+    }
+
     scheduleReconnect() {
         setTimeout(() => this.reconnect(), WS_CONFIG.RECONNECT_INTERVAL)
     }
@@ -314,6 +358,7 @@ export class NetworkManager {
 
     // Работа с пользователями
     sendCursor(x, y, painting = false) {
+        this.updateActivity()
         return this.send({
             type: WS_PROTOCOL.CURSOR,
             x, y, painting,
@@ -329,8 +374,25 @@ export class NetworkManager {
         })
     }
 
+    sendUserStatus(status) {
+        return this.send({
+            type: WS_PROTOCOL.USER_STATUS,
+            status,
+            userId: this.userId
+        })
+    }
+
+    sendUserPresence(presence) {
+        return this.send({
+            type: WS_PROTOCOL.USER_PRESENCE,
+            presence,
+            userId: this.userId
+        })
+    }
+
     // Работа с редактором
     sendAction(action) {
+        this.updateActivity()
         return this.send({
             type: WS_PROTOCOL.ACTION,
             action
@@ -422,7 +484,10 @@ export const NETWORK_METHODS = {
         UPDATE: 'user-update',
         ROLE_SET: 'user-role-set',
         KICK: 'user-kick',
-        BAN: 'user-ban'
+        BAN: 'user-ban',
+        STATUS: 'user-status',
+        PRESENCE: 'user-presence',
+        ACTIVITY: 'user-activity'
     },
 
     // Методы для редактора
@@ -481,6 +546,9 @@ export const NETWORK_METHODS = {
  *    - cursor: { type: 'cursor', x: number, y: number, painting: boolean }
  *    - role-set: { type: 'role-set', targetUserId: string, role: string }
  *    - role-set-response: { type: 'role-set-response', success: boolean, error?: string }
+ *    - user-status: { type: 'user-status', status: string, userId: string } // НОВЫЙ
+ *    - user-activity: { type: 'user-activity', timestamp: number } // НОВЫЙ
+ *    - user-presence: { type: 'user-presence', presence: string, userId: string } // НОВЫЙ
  *
  * 4. РЕДАКТОР:
  *    - action: { type: 'action', action: Object }

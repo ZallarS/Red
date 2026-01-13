@@ -2,7 +2,7 @@
 import { PanelBase, PanelFactory } from '../panelBase.js'
 import { getState, subscribe } from '../store.js'
 import { setUserRole } from '../../actions.js'
-import { ROLE_META, MESSAGES  } from '../../config.js'
+import { ROLE_META, MESSAGES } from '../../config.js'
 
 /**
  * Панель пользователей (исправленная версия)
@@ -16,7 +16,7 @@ class UsersPanel extends PanelBase {
             requiredRoles: ['owner', 'admin', 'editor', 'viewer'],
             description: 'Управление пользователями и ролями',
             category: 'users',
-            version: '2.0.2' // Обновляем версию
+            version: '2.2.0' // Обновляем версию
         })
 
         this.users = []
@@ -46,8 +46,8 @@ class UsersPanel extends PanelBase {
                     <div class="users-stat-label">Всего</div>
                 </div>
                 <div class="users-stat">
-                    <div class="users-stat-value" id="active-users">0</div>
-                    <div class="users-stat-label">Активных</div>
+                    <div class="users-stat-value" id="online-users">0</div>
+                    <div class="users-stat-label">Онлайн</div>
                 </div>
                 <div class="users-stat">
                     <div class="users-stat-value" id="admin-users">0</div>
@@ -123,8 +123,17 @@ class UsersPanel extends PanelBase {
             return
         }
 
-        // Сортируем пользователей: сначала владельцы, потом админы, потом редакторы, потом наблюдатели
+        // Сортируем пользователей: сначала онлайн, потом офлайн
+        // внутри группы сортируем по роли
         const sortedUsers = [...this.users].sort((a, b) => {
+            // Сначала онлайн, потом офлайн
+            const aIsOnline = a.status === 'online' || a.status === 'idle' || a.status === 'away'
+            const bIsOnline = b.status === 'online' || b.status === 'idle' || b.status === 'away'
+
+            if (aIsOnline && !bIsOnline) return -1
+            if (!aIsOnline && bIsOnline) return 1
+
+            // Если оба онлайн или оба офлайн, сортируем по роли
             const roleOrder = { owner: 0, admin: 1, editor: 2, viewer: 3 }
             return roleOrder[a.role] - roleOrder[b.role]
         })
@@ -145,6 +154,16 @@ class UsersPanel extends PanelBase {
     createUserElement(user) {
         const element = document.createElement('div')
         element.className = 'user-item'
+
+        // Добавляем классы для статуса
+        if (user.status === 'offline') {
+            element.classList.add('user-offline')
+        } else if (user.status === 'idle' || user.status === 'away') {
+            element.classList.add('user-idle')
+        } else {
+            element.classList.add('user-online')
+        }
+
         if (user.id === this.myId) {
             element.classList.add('user-item-me')
         }
@@ -163,6 +182,25 @@ class UsersPanel extends PanelBase {
         avatar.className = 'user-avatar'
         avatar.style.backgroundColor = user.color || roleMeta.color
         avatar.textContent = user.name ? user.name.charAt(0).toUpperCase() : 'U'
+
+        // Индикатор статуса
+        const statusIndicator = document.createElement('div')
+        statusIndicator.className = 'user-status-indicator'
+        if (user.status === 'online') {
+            statusIndicator.classList.add('status-online')
+            statusIndicator.title = 'В сети'
+        } else if (user.status === 'idle') {
+            statusIndicator.classList.add('status-idle')
+            statusIndicator.title = 'Неактивен'
+        } else if (user.status === 'away') {
+            statusIndicator.classList.add('status-away')
+            statusIndicator.title = 'Отошёл'
+        } else {
+            statusIndicator.classList.add('status-offline')
+            statusIndicator.title = 'Не в сети'
+        }
+
+        avatar.appendChild(statusIndicator)
 
         const userInfo = document.createElement('div')
         userInfo.className = 'user-info'
@@ -187,8 +225,33 @@ class UsersPanel extends PanelBase {
         id.className = 'user-id'
         id.textContent = `ID: ${user.id?.substring(0, 8)}...`
 
+        // Статус пользователя
+        const statusText = document.createElement('div')
+        statusText.className = 'user-status-text'
+
+        let statusDisplay = ''
+        if (user.status === 'online') {
+            statusDisplay = '🟢 В сети'
+        } else if (user.status === 'idle') {
+            statusDisplay = '🟡 Неактивен'
+        } else if (user.status === 'away') {
+            statusDisplay = '🟠 Отошёл'
+        } else {
+            statusDisplay = '⚫ Не в сети'
+
+            // Для офлайн пользователей добавляем время последней активности
+            if (user.lastActivity) {
+                const lastSeen = document.createElement('div')
+                lastSeen.className = 'user-last-seen'
+                lastSeen.textContent = this.formatLastSeen(user.lastActivity)
+                userInfo.appendChild(lastSeen)
+            }
+        }
+        statusText.textContent = statusDisplay
+
         userInfo.appendChild(nameRow)
         userInfo.appendChild(id)
+        userInfo.appendChild(statusText)
 
         userMain.appendChild(avatar)
         userMain.appendChild(userInfo)
@@ -209,14 +272,18 @@ class UsersPanel extends PanelBase {
         userContainer.appendChild(userMain)
         userContainer.appendChild(userRole)
 
-        // Дополнительная секция с селектором роли (если нужно)
+        // Проверяем права текущего пользователя
+        const hasRoleChangePermission = (this.myRole === 'owner' || this.myRole === 'admin')
+
+        // Определяем, может ли текущий пользователь изменять роль этого пользователя
         const canChangeRole = (
-            (this.myRole === 'owner' || this.myRole === 'admin') &&
+            hasRoleChangePermission &&
             user.id !== this.myId &&
             user.role !== 'owner'
         )
 
         if (canChangeRole) {
+            // Показываем селектор роли, если есть права и это не владелец
             const roleSelectorSection = document.createElement('div')
             roleSelectorSection.className = 'user-role-selector-section'
 
@@ -259,28 +326,47 @@ class UsersPanel extends PanelBase {
             roleSelectorSection.appendChild(selectorLabel)
             roleSelectorSection.appendChild(roleSelect)
             userContainer.appendChild(roleSelectorSection)
-        } else if (user.id === this.myId) {
-            // Информация о том, что нельзя изменить свою роль
-            const roleInfo = document.createElement('div')
-            roleInfo.className = 'user-role-info'
-            roleInfo.innerHTML = `
-                <span class="user-role-info-icon">ℹ️</span>
-                <span class="user-role-info-text">Вы не можете изменить свою роль</span>
-            `
-            userContainer.appendChild(roleInfo)
-        } else if (user.role === 'owner') {
-            // Информация о владельце
-            const ownerInfo = document.createElement('div')
-            ownerInfo.className = 'user-role-info user-role-info-owner'
-            ownerInfo.innerHTML = `
-                <span class="user-role-info-icon">👑</span>
-                <span class="user-role-info-text">Роль владельца нельзя изменить</span>
-            `
-            userContainer.appendChild(ownerInfo)
+        } else {
+            // Если нельзя менять роль, показываем информацию
+            if (user.id === this.myId) {
+                // Информация о том, что нельзя изменить свою роль
+                const roleInfo = document.createElement('div')
+                roleInfo.className = 'user-role-info'
+                roleInfo.innerHTML = `
+                    <span class="user-role-info-icon">ℹ️</span>
+                    <span class="user-role-info-text">Вы не можете изменить свою роль</span>
+                `
+                userContainer.appendChild(roleInfo)
+            } else if (hasRoleChangePermission && user.role === 'owner') {
+                // Информация о владельце показывается только тем, кто имеет право менять роли
+                const ownerInfo = document.createElement('div')
+                ownerInfo.className = 'user-role-info user-role-info-owner'
+                ownerInfo.innerHTML = `
+                    <span class="user-role-info-icon">👑</span>
+                    <span class="user-role-info-text">Роль владельца нельзя изменить</span>
+                `
+                userContainer.appendChild(ownerInfo)
+            }
         }
 
         element.appendChild(userContainer)
         return element
+    }
+
+    /**
+     * Форматирует время последней активности
+     */
+    formatLastSeen(timestamp) {
+        const now = Date.now()
+        const diff = now - timestamp
+        const minutes = Math.floor(diff / (1000 * 60))
+        const hours = Math.floor(diff / (1000 * 60 * 60))
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+
+        if (days > 0) return `был ${days} дн. назад`
+        if (hours > 0) return `был ${hours} ч. назад`
+        if (minutes > 0) return `был ${minutes} мин. назад`
+        return 'только что'
     }
 
     /**
@@ -315,11 +401,13 @@ class UsersPanel extends PanelBase {
      */
     updateStats() {
         const totalUsers = this.users.length
-        const activeUsers = this.users.filter(u => !u.afk).length
+        const onlineUsers = this.users.filter(user =>
+            user.status === 'online' || user.status === 'idle' || user.status === 'away'
+        ).length
         const adminUsers = this.users.filter(u => u.role === 'admin' || u.role === 'owner').length
 
         document.getElementById('total-users').textContent = totalUsers
-        document.getElementById('active-users').textContent = activeUsers
+        document.getElementById('online-users').textContent = onlineUsers
         document.getElementById('admin-users').textContent = adminUsers
     }
 
@@ -438,24 +526,6 @@ class UsersPanel extends PanelBase {
                 padding: 4px 4px 4px 0;
             }
             
-            .users-list::-webkit-scrollbar {
-                width: 6px;
-            }
-            
-            .users-list::-webkit-scrollbar-track {
-                background: #1a1a1a;
-                border-radius: 3px;
-            }
-            
-            .users-list::-webkit-scrollbar-thumb {
-                background: #333;
-                border-radius: 3px;
-            }
-            
-            .users-list::-webkit-scrollbar-thumb:hover {
-                background: #444;
-            }
-            
             .user-item {
                 background: #1a1a1a;
                 border: 1px solid #222;
@@ -469,6 +539,14 @@ class UsersPanel extends PanelBase {
             .user-item:hover {
                 background: #222;
                 border-color: #333;
+            }
+            
+            .user-item.user-offline {
+                opacity: 0.7;
+            }
+            
+            .user-item.user-idle {
+                opacity: 0.9;
             }
             
             .user-item-me {
@@ -500,7 +578,23 @@ class UsersPanel extends PanelBase {
                 color: white;
                 font-size: 18px;
                 flex-shrink: 0;
+                position: relative;
             }
+            
+            .user-status-indicator {
+                position: absolute;
+                bottom: -2px;
+                right: -2px;
+                width: 14px;
+                height: 14px;
+                border-radius: 50%;
+                border: 2px solid #1a1a1a;
+            }
+            
+            .status-online { background: #20c997; }
+            .status-idle { background: #ffc107; }
+            .status-away { background: #ff9500; }
+            .status-offline { background: #888; }
             
             .user-info {
                 flex: 1;
@@ -548,6 +642,19 @@ class UsersPanel extends PanelBase {
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
+            }
+            
+            .user-status-text {
+                font-size: 12px;
+                color: #888;
+                margin-top: 4px;
+            }
+            
+            .user-last-seen {
+                font-size: 11px;
+                color: #666;
+                font-style: italic;
+                margin-top: 2px;
             }
             
             .user-role-display {
@@ -764,7 +871,7 @@ PanelFactory.register(usersPanel)
 export function setUsers(users) {
     if (!users) return
     const list = users instanceof Map ? [...users.values()] : Array.isArray(users) ? users : []
-    console.log('📊 Обновление пользователей в магазине:', list.map(u => ({ id: u.id, role: u.role })))
+    console.log('📊 Обновление пользователей в хранилище:', list.map(u => ({ id: u.id, role: u.role })))
 }
 
 export { usersPanel }
