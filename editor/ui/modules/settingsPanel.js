@@ -140,8 +140,10 @@ window.__canvasverse_panelModules.set('settings', {
                         Настройки редактора
                     </div>
                     
+                    <!-- ИСПРАВЛЕНА СТРУКТУРА: Текст идет ПЕРЕД ползунком -->
                     <div class="settings-field">
-                        <label class="settings-toggle">
+                        <label class="settings-toggle" for="grid-enabled">
+                            <span class="settings-toggle-text">Включить сетку</span>
                             <input 
                                 type="checkbox" 
                                 id="grid-enabled" 
@@ -149,12 +151,13 @@ window.__canvasverse_panelModules.set('settings', {
                                 ${!canEdit ? 'disabled' : ''}
                             />
                             <span class="settings-toggle-slider"></span>
-                            <span class="settings-toggle-text">Включить сетку</span>
                         </label>
                     </div>
 
+                    <!-- ИСПРАВЛЕНА СТРУКТУРА: Текст идет ПЕРЕД ползунком -->
                     <div class="settings-field">
-                        <label class="settings-toggle">
+                        <label class="settings-toggle" for="snap-enabled">
+                            <span class="settings-toggle-text">Включить привязку</span>
                             <input 
                                 type="checkbox" 
                                 id="snap-enabled" 
@@ -162,7 +165,6 @@ window.__canvasverse_panelModules.set('settings', {
                                 ${!canEdit ? 'disabled' : ''}
                             />
                             <span class="settings-toggle-slider"></span>
-                            <span class="settings-toggle-text">Включить привязку</span>
                         </label>
                     </div>
                 </div>
@@ -516,26 +518,40 @@ if (!document.getElementById('settings-panel-styles')) {
             color: #4a9eff;
         }
 
-        /* ИСПРАВЛЕНО: Чекбоксы не наезжают на текст */
+        /* ИСПРАВЛЕНО: Новая структура тогглов */
         .settings-toggle {
             display: flex;
             align-items: center;
-            gap: 16px;
+            justify-content: space-between;
             cursor: pointer;
-            padding: 8px 0;
-            min-height: 44px;
+            padding: 12px 0;
+            width: 100%;
         }
 
+        /* Текст слева */
+        .settings-toggle-text {
+            font-size: 14px;
+            color: #ddd;
+            flex: 1;
+            padding-right: 16px;
+        }
+
+        /* Контейнер для чекбокса и ползунка справа */
         .settings-toggle input[type="checkbox"] {
-            display: none;
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
         }
 
+        /* Ползунок */
         .settings-toggle-slider {
             position: relative;
-            width: 48px;
-            height: 24px;
+            display: inline-block;
+            width: 52px;
+            height: 28px;
             background: #333;
-            border-radius: 12px;
+            border-radius: 14px;
             transition: all 0.3s ease;
             flex-shrink: 0;
         }
@@ -543,8 +559,8 @@ if (!document.getElementById('settings-panel-styles')) {
         .settings-toggle-slider:before {
             content: '';
             position: absolute;
-            width: 20px;
-            height: 20px;
+            width: 24px;
+            height: 24px;
             background: #888;
             border-radius: 50%;
             top: 2px;
@@ -552,6 +568,7 @@ if (!document.getElementById('settings-panel-styles')) {
             transition: all 0.3s ease;
         }
 
+        /* Состояние включено */
         .settings-toggle input:checked + .settings-toggle-slider {
             background: #4a9eff;
         }
@@ -561,11 +578,22 @@ if (!document.getElementById('settings-panel-styles')) {
             background: #fff;
         }
 
-        .settings-toggle-text {
-            font-size: 14px;
-            color: #ddd;
-            flex: 1;
-            padding-right: 8px;
+        /* Состояние отключено */
+        .settings-toggle input:not(:checked) + .settings-toggle-slider {
+            background: #333;
+        }
+
+        .settings-toggle input:not(:checked) + .settings-toggle-slider:before {
+            background: #888;
+        }
+
+        /* Hover состояния */
+        .settings-toggle:hover .settings-toggle-slider {
+            background: #444;
+        }
+
+        .settings-toggle:hover input:checked + .settings-toggle-slider {
+            background: #3a8aef;
         }
 
         .settings-actions {
@@ -680,7 +708,26 @@ if (!document.getElementById('settings-panel-styles')) {
             }
             
             .settings-toggle {
-                gap: 12px;
+                padding: 10px 0;
+            }
+            
+            .settings-toggle-text {
+                font-size: 13px;
+                padding-right: 12px;
+            }
+            
+            .settings-toggle-slider {
+                width: 48px;
+                height: 26px;
+            }
+            
+            .settings-toggle-slider:before {
+                width: 22px;
+                height: 22px;
+            }
+            
+            .settings-toggle input:checked + .settings-toggle-slider:before {
+                transform: translateX(22px);
             }
         }
     `
