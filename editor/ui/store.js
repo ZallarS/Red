@@ -91,12 +91,26 @@ export function setState(patch) {
         }
     }
 
-    // Уведомляем слушателей
+    // Уведомляем слушателей с защитой от ошибок
     listeners.forEach(fn => {
         try {
-            fn(state)
+            // Проверяем, что функция все еще существует
+            if (typeof fn === 'function') {
+                fn(state)
+            } else {
+                // Удаляем недействительные слушатели
+                listeners.delete(fn)
+            }
         } catch (e) {
             console.error('❌ Ошибка прослушивания хранилища:', e)
+            console.error('Стек ошибки:', e.stack)
+
+            // Удаляем проблемного слушателя, чтобы не блокировать остальных
+            try {
+                listeners.delete(fn)
+            } catch (deleteError) {
+                console.error('❌ Не удалось удалить проблемного слушателя:', deleteError)
+            }
         }
     })
 }

@@ -10,7 +10,6 @@ import {
 } from './map.js'
 
 // ===== LOD SELECTION =====
-// DOT — последний и бесконечный уровень
 function getLOD(zoom) {
     if (zoom >= 1.0) return LOD_LEVELS.FULL
     if (zoom >= 0.6) return LOD_LEVELS.SIMPLE
@@ -51,39 +50,57 @@ export function render(ctx, canvas, cursors = new Map(), softLocks = new Map()) 
     // ===== OVERLAY (SCREEN SPACE) =====
     ctx.setTransform(1, 0, 0, 1, 0, 0)
 
-    // --- SOFT-LOCK ZONES ---
-    for (const lock of softLocks.values()) {
-        ctx.globalAlpha = 0.15
-        ctx.fillStyle = lock.color
-        ctx.beginPath()
-        ctx.arc(lock.x, lock.y, lock.radius, 0, Math.PI * 2)
-        ctx.fill()
+    // --- CURSORS ---
+    for (const c of cursors.values()) {
+        // ВАЖНО: Преобразуем мировые координаты курсора в экранные
+        const screenX = (c.x - camera.x) * camera.zoom
+        const screenY = (c.y - camera.y) * camera.zoom
 
-        ctx.globalAlpha = 0.6
-        ctx.strokeStyle = lock.color
-        ctx.setLineDash([6, 4])
-        ctx.stroke()
+        // Проверяем, находится ли курсор в пределах холста
+        if (screenX >= -10 && screenX <= canvas.width + 10 &&
+            screenY >= -10 && screenY <= canvas.height + 10) {
 
-        ctx.setLineDash([])
-        ctx.globalAlpha = 1
+            ctx.fillStyle = c.color
+            ctx.beginPath()
+            ctx.arc(screenX, screenY, 6, 0, Math.PI * 2)
+            ctx.fill()
 
-        if (lock.name) {
-            ctx.font = '11px sans-serif'
-            ctx.fillStyle = lock.color
-            ctx.fillText(lock.name, lock.x + lock.radius + 6, lock.y)
+            if (c.name) {
+                ctx.font = '12px sans-serif'
+                ctx.fillStyle = c.color
+                ctx.fillText(c.name, screenX + 8, screenY - 8)
+            }
         }
     }
 
-    // --- CURSORS ---
-    for (const c of cursors.values()) {
-        ctx.fillStyle = c.color
-        ctx.beginPath()
-        ctx.arc(c.x, c.y, 4, 0, Math.PI * 2)
-        ctx.fill()
+    // --- SOFT-LOCK ZONES ---
+    for (const lock of softLocks.values()) {
+        // Преобразуем мировые координаты в экранные
+        const screenX = (lock.x - camera.x) * camera.zoom
+        const screenY = (lock.y - camera.y) * camera.zoom
 
-        if (c.name) {
-            ctx.font = '11px sans-serif'
-            ctx.fillText(c.name, c.x + 6, c.y - 6)
+        if (screenX >= -100 && screenX <= canvas.width + 100 &&
+            screenY >= -100 && screenY <= canvas.height + 100) {
+
+            ctx.globalAlpha = 0.15
+            ctx.fillStyle = lock.color
+            ctx.beginPath()
+            ctx.arc(screenX, screenY, lock.radius, 0, Math.PI * 2)
+            ctx.fill()
+
+            ctx.globalAlpha = 0.6
+            ctx.strokeStyle = lock.color
+            ctx.setLineDash([6, 4])
+            ctx.stroke()
+
+            ctx.setLineDash([])
+            ctx.globalAlpha = 1
+
+            if (lock.name) {
+                ctx.font = '11px sans-serif'
+                ctx.fillStyle = lock.color
+                ctx.fillText(lock.name, screenX + lock.radius + 6, screenY)
+            }
         }
     }
 }

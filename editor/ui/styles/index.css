@@ -1,0 +1,58 @@
+/* index.css - Главный файл стилей CanvasVerse */
+
+/* Импорт всех стилей */
+@import './global.css';
+@import './panels.css';
+@import './components.css';
+@import './lobby.css';
+@import './debug.css';
+
+/* Переменные CSS */
+:root {
+    /* Цвета */
+    --color-primary: #4a9eff;
+    --color-primary-dark: #3a8aef;
+    --color-background: #0f0f0f;
+    --color-panel-bg: #1a1a1a;
+    --color-border: #222;
+    --color-text: #fff;
+    --color-text-secondary: #888;
+    --color-success: #20c997;
+    --color-warning: #ffc107;
+    --color-error: #ff4757;
+    --color-owner: #ff6b35;
+    --color-admin: #e0b400;
+    --color-editor: #4a9eff;
+    --color-viewer: #888;
+
+    /* Размеры */
+    --panel-width: 320px;
+    --panel-width-mobile: 280px;
+    --border-radius-sm: 4px;
+    --border-radius-md: 6px;
+    --border-radius-lg: 8px;
+    --border-radius-xl: 12px;
+
+    /* Тени */
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.4);
+
+    /* Анимации */
+    --transition-fast: 0.15s ease;
+    --transition-normal: 0.2s ease;
+    --transition-slow: 0.3s ease;
+}
+
+/* Медиа-запросы */
+@media (max-width: 768px) {
+    :root {
+        --panel-width: 280px;
+    }
+}
+
+@media (max-width: 480px) {
+    :root {
+        --panel-width: 250px;
+    }
+}

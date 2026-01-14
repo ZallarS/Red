@@ -17,9 +17,45 @@ function createBrushTool(getState) {
     // Получаем сетевой менеджер
     const networkManager = getNetworkManager()
 
-    // Добавляем функцию для расчета расстояния между точками
+    // Функция для расчета расстояния между точками
     function distance(x1, y1, x2, y2) {
         return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+    }
+
+    function paintAt(pos, worldPos, useLine = false) {
+        const { tool, snapping } = getState()
+
+        // ВАЖНО: Используем Math.floor для абсолютных координат
+        let x, y
+
+        if (snapping) {
+            // При привязке - округляем к центру ячейки
+            x = Math.floor((worldPos.x + TILE_SIZE / 2) / TILE_SIZE)
+            y = Math.floor((worldPos.y + TILE_SIZE / 2) / TILE_SIZE)
+        } else {
+            // Без привязки - используем точное положение курсора
+            x = Math.floor(worldPos.x / TILE_SIZE)
+            y = Math.floor(worldPos.y / TILE_SIZE)
+        }
+
+        const key = `${x},${y}`
+
+        // Если уже рисовали в этой ячейке в текущем сеансе, пропускаем
+        if (painted.has(key)) return
+
+        painted.add(key)
+
+        const tile = tool === 'erase' ? 0 : 1
+        const action = createSetTileAction(x, y, tile)
+        if (!action) return
+
+        // ВАЖНО: Логируем координаты для отладки
+        console.log(`🎨 Рисуем в ячейке: (${x}, ${y}), мировые координаты: (${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)})`)
+
+        applyAction(action)
+        actions.push(action)
+
+        return { x, y }
     }
 
     // Функция для рисования линии между двумя ячейками (алгоритм Брезенхэма)
@@ -50,39 +86,6 @@ function createBrushTool(getState) {
         }
     }
 
-    function paintAt(pos, worldPos, useLine = false) {
-        const { tool, snapping } = getState()
-
-        // ВАЖНОЕ ИСПРАВЛЕНИЕ: Используем Math.floor вместо Math.round
-        let x, y
-
-        if (snapping) {
-            // При привязке - округляем к центру ячейки
-            x = Math.floor((worldPos.x + TILE_SIZE / 2) / TILE_SIZE)
-            y = Math.floor((worldPos.y + TILE_SIZE / 2) / TILE_SIZE)
-        } else {
-            // Без привязки - используем точное положение курсора
-            x = Math.floor(worldPos.x / TILE_SIZE)
-            y = Math.floor(worldPos.y / TILE_SIZE)
-        }
-
-        const key = `${x},${y}`
-
-        // Если уже рисовали в этой ячейке в текущем сеансе, пропускаем
-        if (painted.has(key)) return
-
-        painted.add(key)
-
-        const tile = tool === 'erase' ? 0 : 1
-        const action = createSetTileAction(x, y, tile)
-        if (!action) return
-
-        applyAction(action)
-        actions.push(action)
-
-        return { x, y }
-    }
-
     return {
         begin(ctx) {
             painted.clear()
@@ -104,11 +107,10 @@ function createBrushTool(getState) {
             if (currentCell && lastCell &&
                 (currentCell.x !== lastCell.x || currentCell.y !== lastCell.y)) {
 
-                // Рассчитываем все ячейки между предыдущей и текущей
+                // Используем алгоритм Брезенхэма для плавного рисования линии
                 const from = lastCell
                 const to = currentCell
 
-                // Используем алгоритм Брезенхэма для плавного рисования линии
                 const dx = Math.abs(to.x - from.x)
                 const dy = Math.abs(to.y - from.y)
                 const sx = from.x < to.x ? 1 : -1
@@ -165,6 +167,9 @@ function createBrushTool(getState) {
             push(brush)
 
             if (ctx.ready && networkManager.getStatus() === 'online') {
+                // ВАЖНО: Логируем отправляемые координаты
+                console.log('📤 Отправляем действие:', brush.actions.map(a => `(${a.x}, ${a.y})`))
+
                 networkManager.send({
                     type: WS_PROTOCOL.ACTION,
                     action: brush
@@ -205,11 +210,16 @@ export function initDrawing(canvas, getState) {
 
         const r = canvas.getBoundingClientRect()
 
-        // Отправляем точные координаты курсора
+        // ВАЖНО: Отправляем мировые координаты курсора
+        const worldPos = screenToWorld(
+            e.clientX - r.left,
+            e.clientY - r.top
+        )
+
         networkManager.send({
             type: WS_PROTOCOL.CURSOR,
-            x: e.clientX - r.left,
-            y: e.clientY - r.top,
+            x: worldPos.x,
+            y: worldPos.y,
             painting: drawing
         })
     }

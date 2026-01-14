@@ -220,6 +220,9 @@ function scheduleAutosave(room) {
 function applyRoomAction(room, action) {
     if (!action) return
 
+    console.log('🛠️ Применяем действие к комнате:', action.type,
+        action.actions?.map(a => `(${a.x}, ${a.y})`) || `(${action.x}, ${action.y})`)
+
     if (action.type === 'brush') {
         action.actions.forEach(a => applyRoomAction(room, a))
         return
@@ -227,8 +230,12 @@ function applyRoomAction(room, action) {
 
     if (action.type === 'setTile') {
         const key = `${action.x},${action.y}`
-        if (action.after === 0) room.map.delete(key)
-        else room.map.set(key, action.after)
+        console.log(`   Устанавливаем тайл в (${action.x}, ${action.y}) -> ${action.after ? '1' : '0'}`)
+        if (action.after === 0) {
+            room.map.delete(key)
+        } else {
+            room.map.set(key, action.after)
+        }
     }
 }
 
@@ -238,6 +245,11 @@ const VALID_ROLES = new Set(['owner', 'admin', 'editor', 'viewer'])
 function isAdmin(room, userId) {
     const role = room.roles.get(userId)
     return role === 'admin' || role === 'owner'
+}
+
+function canEdit(room, userId) {
+    const role = room.roles.get(userId)
+    return role === 'admin' || role === 'editor' || role === 'owner'
 }
 
 // ===================== WS =====================
@@ -626,14 +638,28 @@ wss.on('connection', ws => {
         // ===== ACTION =====
         if (msg.type === 'action') {
             const role = room.roles.get(userId)
-            if (role !== 'admin' && role !== 'editor') return
+
+            // ВАЖНОЕ ИСПРАВЛЕНИЕ: Разрешаем владельцу (owner) рисовать
+            if (!canEdit(room, userId)) {
+                console.log(`❌ Пользователь ${userId} с ролью ${role} не имеет прав на редактирование`)
+                return
+            }
+
+            console.log('🎯 Получено действие от', userId, 'с ролью', role, ':',
+                msg.action.actions?.map(a => `(${a.x}, ${a.y})`) || `(${msg.action.x}, ${msg.action.y})`)
 
             // Обновляем активность пользователя
             updateUserOnlineStatus(userId, true)
 
             applyRoomAction(room, msg.action)
             scheduleAutosave(room)
-            broadcastRoom(room, { type: 'action', action: msg.action }, ws)
+
+            // ВАЖНО: Рассылаем всем, кроме отправителя (отправитель уже применил действие локально)
+            broadcastRoom(room, {
+                type: 'action',
+                action: msg.action,
+                senderId: userId // Добавляем ID отправителя для отладки
+            }, ws)
             return
         }
 

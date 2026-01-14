@@ -1,653 +1,449 @@
-// editor/ui/modules/settingsPanel.js
-import { PanelBase, PanelFactory } from '../panelBase.js'
-import { getState, setState, subscribe } from '../store.js'
-import { saveRoomSettings, validateSettings, ROOM_SETTINGS, ROOM_SETTINGS_META } from '../../roomSettings.js'
 
-/**
- * Панель настроек комнаты (переработана на основе PanelBase)
- */
-class SettingsPanel extends PanelBase {
-    constructor() {
+import { PanelBase } from '../panelBase.js'
+import { subscribe, getState, setState } from '../store.js'
+import { ROLE_META, ROLES } from '../../config.js'
+import { saveRoomSettings, canEditSettings, formatSettingsForDisplay } from '../../roomSettings.js'
+
+export class SettingsPanel extends PanelBase {
+    constructor(config) {
         super({
+            ...config,
             id: 'settings',
             title: 'Настройки комнаты',
             icon: '⚙️',
-            requiredRoles: ['owner'],
-            description: 'Управление настройками комнаты',
-            category: 'settings',
-            version: '2.0.0'
+            description: 'Управление параметрами комнаты и правами доступа',
+            category: 'system',
+            version: '1.0.0',
+            requiredRoles: ['admin', 'owner']
         })
 
         this.currentSettings = null
-        this.formElements = new Map()
-        this.isSaving = false
+        this.unsubscribeRoomSettings = null
     }
 
-    /**
-     * Рендерит контент панели
-     */
     renderContent() {
+        console.log('⚙️ Рендерим панель настроек')
+
         // Очищаем контент
         this.content.innerHTML = ''
 
-        // Загружаем текущие настройки
+        // Проверяем права доступа
         const state = getState()
-        this.currentSettings = state.roomSettings || {}
+        const canEdit = canEditSettings(state.role)
 
-        // Создаем форму настроек
-        const form = document.createElement('form')
-        form.className = 'settings-form'
-        form.id = 'room-settings-form'
+        if (!canEdit) {
+            this.content.innerHTML = `
+                <div class="panel-section">
+                    <div class="panel-empty">
+                        <div class="panel-empty-icon">🔒</div>
+                        <div class="panel-empty-text">Недостаточно прав для изменения настроек</div>
+                        <div class="panel-empty-subtext">Требуется роль администратора или владельца</div>
+                    </div>
+                </div>
+            `
+            return
+        }
 
-        // Секция основных настроек
-        const basicSection = this.createSection({
-            title: 'Основные настройки',
-            icon: '📝'
+        // Секция основной информации
+        const infoSection = this.createSection({
+            title: '📋 Основная информация',
+            icon: '📋'
         })
 
         const nameField = this.createInputField({
             id: 'room-name',
             label: 'Название комнаты',
-            type: 'text',
-            value: this.currentSettings.name || '',
             placeholder: 'Введите название комнаты',
-            hint: 'Отображается в списке комнат'
+            value: this.currentSettings?.name || 'Новая комната',
+            hint: 'Отображается в списке комнат и в заголовке'
         })
 
         const descField = this.createInputField({
             id: 'room-description',
-            label: 'Описание',
+            label: 'Описание комнаты',
             type: 'textarea',
-            value: this.currentSettings.description || '',
-            placeholder: 'Опишите назначение комнаты',
+            placeholder: 'Опишите назначение комнаты...',
+            value: this.currentSettings?.description || '',
+            hint: 'Максимум 200 символов',
             rows: 3
         })
 
-        basicSection.appendChild(nameField)
-        basicSection.appendChild(descField)
-        form.appendChild(basicSection)
+        infoSection.appendChild(nameField)
+        infoSection.appendChild(descField)
 
-        // Секция доступа
-        const accessSection = this.createSection({
-            title: 'Доступ и пользователи',
-            icon: '👥'
-        })
-
-        // Видимость комнаты
-        const visibilityField = this.createVisibilityField()
-        accessSection.appendChild(visibilityField)
-
-        // Пароль (показывается только при выборе "С паролем")
-        const passwordField = this.createInputField({
-            id: 'room-password',
-            label: 'Пароль',
-            type: 'password',
-            value: this.currentSettings.password || '',
-            placeholder: 'Введите пароль',
-            hint: 'Требуется для входа в комнату'
-        })
-
-        passwordField.style.display = this.currentSettings.visibility === ROOM_SETTINGS.PASSWORD ? 'block' : 'none'
-        accessSection.appendChild(passwordField)
-
-        // Максимальное количество пользователей
-        const maxUsersField = this.createRangeField({
-            id: 'max-users',
-            label: 'Максимальное количество пользователей',
-            min: 1,
-            max: 100,
-            value: this.currentSettings.maxUsers || 20,
-            hint: 'Лимит пользователей в комнате'
-        })
-
-        accessSection.appendChild(maxUsersField)
-
-        // Роль по умолчанию
-        const roleField = this.createSelectField({
-            id: 'default-role',
-            label: 'Роль по умолчанию',
-            options: [
-                { value: 'viewer', label: 'Наблюдатель' },
-                { value: 'editor', label: 'Редактор' },
-                { value: 'admin', label: 'Администратор' }
-            ],
-            value: this.currentSettings.defaultRole || 'viewer',
-            hint: 'Роль для новых пользователей'
-        })
-
-        accessSection.appendChild(roleField)
-        form.appendChild(accessSection)
-
-        // Секция редактора
+        // Секция настроек редактора
         const editorSection = this.createSection({
-            title: 'Настройки редактора',
+            title: '🎨 Настройки редактора',
             icon: '🎨'
         })
 
         const gridToggle = this.createToggle({
             id: 'grid-enabled',
             label: 'Включить сетку',
-            checked: this.currentSettings.gridEnabled !== false
+            checked: this.currentSettings?.gridEnabled !== false,
+            onChange: (checked) => {
+                console.log('Сетка:', checked ? 'включена' : 'выключена')
+                this.updateSettings({ gridEnabled: checked })
+            }
         })
 
         const snapToggle = this.createToggle({
             id: 'snap-enabled',
-            label: 'Включить привязку',
-            checked: this.currentSettings.snapEnabled !== false
+            label: 'Включить привязку к сетке',
+            checked: this.currentSettings?.snapEnabled !== false,
+            onChange: (checked) => {
+                console.log('Привязка:', checked ? 'включена' : 'выключена')
+                this.updateSettings({ snapEnabled: checked })
+            }
         })
 
         editorSection.appendChild(gridToggle)
         editorSection.appendChild(snapToggle)
-        form.appendChild(editorSection)
 
-        // Кнопки действий
-        const actionsSection = document.createElement('div')
-        actionsSection.className = 'settings-actions'
+        // Секция мета-информации (только для чтения)
+        const metaSection = document.createElement('div')
+        metaSection.className = 'panel-section panel-section-meta'
+        metaSection.innerHTML = `
+            <div class="panel-section-title">
+                <span class="panel-section-title-icon">📊</span>
+                <span>Информация о комнате</span>
+            </div>
+            <div class="panel-meta-grid" id="meta-info-grid">
+                <!-- Динамически заполняется -->
+            </div>
+        `
+
+        // Секция управления
+        const controlSection = this.createSection({
+            title: '⚡ Быстрые действия',
+            icon: '⚡'
+        })
 
         const saveButton = this.createButton({
-            id: 'save-settings',
-            text: 'Сохранить настройки',
+            text: 'Сохранить все настройки',
             icon: '💾',
             primary: true,
-            onClick: (e) => {
-                e.preventDefault()
-                this.saveSettings()
+            onClick: () => {
+                this.saveAllSettings()
             }
         })
 
         const resetButton = this.createButton({
-            id: 'reset-settings',
-            text: 'Сбросить изменения',
-            icon: '↺',
-            onClick: (e) => {
-                e.preventDefault()
-                this.resetForm()
-            }
-        })
-
-        actionsSection.appendChild(saveButton)
-        actionsSection.appendChild(resetButton)
-        form.appendChild(actionsSection)
-
-        // Мета-информация
-        const metaSection = this.createMetaSection()
-        form.appendChild(metaSection)
-
-        this.content.appendChild(form)
-
-        // Сохраняем ссылки на элементы формы
-        this.collectFormElements(form)
-
-        // Настраиваем обработчики
-        this.setupFormHandlers(form)
-
-        // Применяем стили
-        this.applySettingsStyles()
-
-        // Подписываемся на изменения
-        this.setupSubscriptions()
-    }
-
-    /**
-     * Создает поле выбора видимости
-     */
-    createVisibilityField() {
-        const field = document.createElement('div')
-        field.className = 'panel-field'
-
-        const label = document.createElement('label')
-        label.className = 'panel-field-label'
-        label.textContent = 'Видимость комнаты'
-
-        const group = document.createElement('div')
-        group.className = 'visibility-group'
-        group.id = 'visibility-group'
-
-        Object.entries(ROOM_SETTINGS_META).forEach(([key, meta]) => {
-            const radio = document.createElement('label')
-            radio.className = 'visibility-radio'
-
-            const input = document.createElement('input')
-            input.type = 'radio'
-            input.name = 'visibility'
-            input.value = key
-            input.checked = this.currentSettings.visibility === key
-
-            const icon = document.createElement('span')
-            icon.className = 'visibility-icon'
-            icon.textContent = meta.icon
-
-            const text = document.createElement('div')
-            text.className = 'visibility-text'
-            text.innerHTML = `
-                <strong>${meta.label}</strong>
-                <small>${meta.description}</small>
-            `
-
-            radio.appendChild(input)
-            radio.appendChild(icon)
-            radio.appendChild(text)
-            group.appendChild(radio)
-        })
-
-        field.appendChild(label)
-        field.appendChild(group)
-
-        return field
-    }
-
-    /**
-     * Создает поле с ползунком
-     */
-    createRangeField(config) {
-        const field = document.createElement('div')
-        field.className = 'panel-field'
-
-        const label = document.createElement('label')
-        label.className = 'panel-field-label'
-        label.textContent = config.label
-        label.htmlFor = config.id
-
-        const rangeContainer = document.createElement('div')
-        rangeContainer.className = 'range-container'
-
-        const range = document.createElement('input')
-        range.type = 'range'
-        range.id = config.id
-        range.min = config.min
-        range.max = config.max
-        range.value = config.value
-
-        const value = document.createElement('span')
-        value.className = 'range-value'
-        value.textContent = config.value
-
-        range.addEventListener('input', (e) => {
-            value.textContent = e.target.value
-        })
-
-        rangeContainer.appendChild(range)
-        rangeContainer.appendChild(value)
-
-        field.appendChild(label)
-        field.appendChild(rangeContainer)
-
-        if (config.hint) {
-            const hint = document.createElement('div')
-            hint.className = 'panel-field-hint'
-            hint.textContent = config.hint
-            field.appendChild(hint)
-        }
-
-        return field
-    }
-
-    /**
-     * Создает поле выбора
-     */
-    createSelectField(config) {
-        const field = document.createElement('div')
-        field.className = 'panel-field'
-
-        const label = document.createElement('label')
-        label.className = 'panel-field-label'
-        label.textContent = config.label
-        label.htmlFor = config.id
-
-        const select = document.createElement('select')
-        select.id = config.id
-        select.className = 'panel-field-input'
-
-        config.options.forEach(option => {
-            const optionElement = document.createElement('option')
-            optionElement.value = option.value
-            optionElement.textContent = option.label
-            if (option.value === config.value) {
-                optionElement.selected = true
-            }
-            select.appendChild(optionElement)
-        })
-
-        field.appendChild(label)
-        field.appendChild(select)
-
-        if (config.hint) {
-            const hint = document.createElement('div')
-            hint.className = 'panel-field-hint'
-            hint.textContent = config.hint
-            field.appendChild(hint)
-        }
-
-        return field
-    }
-
-    /**
-     * Создает секцию с мета-информацией
-     */
-    createMetaSection() {
-        const section = document.createElement('div')
-        section.className = 'settings-meta'
-
-        const metaGrid = document.createElement('div')
-        metaGrid.className = 'settings-meta-grid'
-
-        const metaItems = [
-            {
-                label: 'Создана',
-                value: new Date(this.currentSettings.createdAt || Date.now()).toLocaleDateString('ru-RU')
-            },
-            {
-                label: 'Пользователей',
-                value: `${this.currentSettings.currentUsers || 0}/${this.currentSettings.maxUsers || 20}`
-            }
-        ]
-
-        if (this.currentSettings.owner) {
-            metaItems.push({
-                label: 'Владелец',
-                value: this.currentSettings.owner.substring(0, 8) + '...'
-            })
-        }
-
-        metaItems.forEach(item => {
-            const metaItem = document.createElement('div')
-            metaItem.className = 'settings-meta-item'
-
-            const label = document.createElement('div')
-            label.className = 'settings-meta-label'
-            label.textContent = item.label
-
-            const value = document.createElement('div')
-            value.className = 'settings-meta-value'
-            value.textContent = item.value
-
-            metaItem.appendChild(label)
-            metaItem.appendChild(value)
-            metaGrid.appendChild(metaItem)
-        })
-
-        section.appendChild(metaGrid)
-        return section
-    }
-
-    /**
-     * Собирает ссылки на элементы формы
-     */
-    collectFormElements(form) {
-        this.formElements.clear()
-
-        // Собираем все поля ввода
-        const inputs = form.querySelectorAll('input, select, textarea')
-        inputs.forEach(input => {
-            this.formElements.set(input.id, input)
-        })
-    }
-
-    /**
-     * Настраивает обработчики формы
-     */
-    setupFormHandlers(form) {
-        // Обработчик изменения видимости
-        const visibilityGroup = form.querySelector('#visibility-group')
-        if (visibilityGroup) {
-            visibilityGroup.addEventListener('change', (e) => {
-                if (e.target.name === 'visibility') {
-                    const passwordField = form.querySelector('#room-password').closest('.panel-field')
-                    if (e.target.value === ROOM_SETTINGS.PASSWORD) {
-                        passwordField.style.display = 'block'
-                    } else {
-                        passwordField.style.display = 'none'
-                    }
+            text: 'Сбросить к значениям по умолчанию',
+            icon: '🔄',
+            onClick: () => {
+                if (confirm('Сбросить все настройки к значениям по умолчанию?')) {
+                    this.resetToDefaults()
                 }
-            })
-
-            this.cleanupFunctions.push(() => {
-                visibilityGroup.removeEventListener('change', this.handleVisibilityChange)
-            })
-        }
-
-        // Обработчик сохранения формы
-        form.addEventListener('submit', (e) => {
-            e.preventDefault()
-            this.saveSettings()
+            }
         })
+
+        controlSection.appendChild(saveButton)
+        controlSection.appendChild(resetButton)
+
+        // Добавляем все секции в контент
+        this.content.appendChild(infoSection)
+        this.content.appendChild(editorSection)
+        this.content.appendChild(metaSection)
+        this.content.appendChild(controlSection)
+
+        // Обновляем мета-информацию
+        this.updateMetaSection()
+
+        // Устанавливаем подписки
+        this.setupSubscriptions()
+
+        return this.cleanup.bind(this)
     }
 
-    /**
-     * Сохраняет настройки
-     */
-    saveSettings() {
-        if (this.isSaving) return
-
-        const form = document.getElementById('room-settings-form')
-        if (!form) return
-
-        // Собираем данные формы
-        const newSettings = {
-            name: this.formElements.get('room-name')?.value.trim() || '',
-            description: this.formElements.get('room-description')?.value.trim() || '',
-            visibility: form.querySelector('input[name="visibility"]:checked')?.value || ROOM_SETTINGS.PUBLIC,
-            password: this.formElements.get('room-password')?.value || '',
-            maxUsers: parseInt(this.formElements.get('max-users')?.value) || 20,
-            defaultRole: this.formElements.get('default-role')?.value || 'viewer',
-            gridEnabled: this.formElements.get('grid-enabled')?.checked !== false,
-            snapEnabled: this.formElements.get('snap-enabled')?.checked !== false
-        }
-
-        // Валидация
-        const validation = validateSettings(newSettings)
-        if (!validation.valid) {
-            this.showMessage('error', validation.errors.join(', '))
+    updateMetaSection() {
+        // ВАЖНО: Защита от null - проверяем существование content
+        if (!this.content || !this.currentSettings) {
+            console.warn('⚠️ Не удалось обновить мета-секцию: content или settings отсутствуют')
             return
         }
 
-        // Если пароль не требуется, очищаем его
-        if (newSettings.visibility !== ROOM_SETTINGS.PASSWORD) {
-            newSettings.password = ''
+        const metaGrid = this.content.querySelector('#meta-info-grid')
+        if (!metaGrid) {
+            console.warn('⚠️ Элемент #meta-info-grid не найден')
+            return
         }
 
-        this.isSaving = true
-        this.showMessage('info', 'Сохранение настроек...')
+        const formatted = formatSettingsForDisplay(this.currentSettings)
+        const state = getState()
 
-        // Обновляем состояние
-        setState({
-            roomSettings: {
-                ...this.currentSettings,
-                ...newSettings
+        metaGrid.innerHTML = `
+            <div class="meta-grid-item">
+                <div class="meta-grid-label">ID комнаты</div>
+                <div class="meta-grid-value">${state.roomId || 'N/A'}</div>
+            </div>
+            <div class="meta-grid-item">
+                <div class="meta-grid-label">Владелец</div>
+                <div class="meta-grid-value">${this.currentSettings.ownerName || 'Неизвестно'}</div>
+            </div>
+            <div class="meta-grid-item">
+                <div class="meta-grid-label">Создана</div>
+                <div class="meta-grid-value">${formatted.createdAt}</div>
+            </div>
+            <div class="meta-grid-item">
+                <div class="meta-grid-label">Статус</div>
+                <div class="meta-grid-value ${formatted.isPasswordProtected ? 'status-protected' : 'status-open'}">
+                    ${formatted.visibility}
+                </div>
+            </div>
+            <div class="meta-grid-item">
+                <div class="meta-grid-label">Пользователи</div>
+                <div class="meta-grid-value">${formatted.users}</div>
+            </div>
+            <div class="meta-grid-item">
+                <div class="meta-grid-label">Роль по умолчанию</div>
+                <div class="meta-grid-value role-${this.currentSettings.defaultRole || 'viewer'}">
+                    ${ROLE_META[this.currentSettings.defaultRole]?.label || 'Наблюдатель'}
+                </div>
+            </div>
+        `
+    }
+
+    setupSubscriptions() {
+        // Отписываемся от предыдущих подписок
+        if (this.unsubscribeRoomSettings) {
+            this.unsubscribeRoomSettings()
+        }
+
+        // Подписываемся на изменения настроек комнаты
+        this.unsubscribeRoomSettings = subscribe((state) => {
+            if (state.roomSettings) {
+                console.log('📥 Получены новые настройки комнаты:', state.roomSettings)
+                this.currentSettings = state.roomSettings
+
+                // ВАЖНО: Защита - проверяем, что панель еще отрендерена
+                if (this.isRendered) {
+                    this.updateMetaSection()
+                }
             }
         })
+
+        // Добавляем в cleanupFunctions для автоматической отписки
+        this.cleanupFunctions.push(() => {
+            if (this.unsubscribeRoomSettings) {
+                this.unsubscribeRoomSettings()
+                this.unsubscribeRoomSettings = null
+            }
+        })
+
+        console.log('✅ Подписки настроек установлены')
+    }
+
+    updateSettings(updates) {
+        if (!this.currentSettings) {
+            console.error('❌ Нет текущих настроек для обновления')
+            return
+        }
+
+        const newSettings = {
+            ...this.currentSettings,
+            ...updates
+        }
+
+        this.currentSettings = newSettings
+
+        // ВАЖНО: Защита - обновляем UI только если панель отрендерена
+        if (this.isRendered) {
+            this.updateMetaSection()
+        }
+    }
+
+    saveAllSettings() {
+        if (!this.currentSettings) {
+            console.error('❌ Нет настроек для сохранения')
+            this.showMessage('error', 'Нет настроек для сохранения')
+            return
+        }
+
+        console.log('💾 Сохранение всех настроек:', this.currentSettings)
+
+        // Получаем значения из полей ввода
+        const nameInput = this.content.querySelector('#room-name')
+        const descInput = this.content.querySelector('#room-description')
+
+        if (nameInput && descInput) {
+            this.currentSettings.name = nameInput.value.trim()
+            this.currentSettings.description = descInput.value.trim()
+        }
+
+        // Валидация
+        if (!this.currentSettings.name || this.currentSettings.name.length < 3) {
+            this.showMessage('error', 'Название комнаты должно быть не менее 3 символов')
+            return
+        }
+
+        if (this.currentSettings.description.length > 200) {
+            this.showMessage('error', 'Описание не должно превышать 200 символов')
+            return
+        }
 
         // Сохраняем на сервер
-        const success = saveRoomSettings(newSettings)
+        const success = saveRoomSettings(this.currentSettings)
+
         if (success) {
             this.showMessage('success', 'Настройки сохранены')
-            this.currentSettings = newSettings
 
-            // Обновляем мета-информацию
-            this.updateMetaSection()
+            // Обновляем состояние хранилища
+            setState({ roomSettings: this.currentSettings })
+
+            console.log('✅ Настройки успешно сохранены')
         } else {
-            this.showMessage('error', 'Ошибка сохранения')
+            this.showMessage('error', 'Ошибка сохранения настроек')
+        }
+    }
+
+    resetToDefaults() {
+        const defaultSettings = {
+            name: 'Новая комната',
+            description: '',
+            gridEnabled: true,
+            snapEnabled: true,
+            defaultRole: 'viewer'
         }
 
-        this.isSaving = false
+        // Сохраняем неизменяемые поля
+        if (this.currentSettings) {
+            defaultSettings.owner = this.currentSettings.owner
+            defaultSettings.ownerName = this.currentSettings.ownerName
+            defaultSettings.createdAt = this.currentSettings.createdAt
+            defaultSettings.visibility = this.currentSettings.visibility
+            defaultSettings.maxUsers = this.currentSettings.maxUsers
+        }
+
+        this.currentSettings = defaultSettings
+
+        // ВАЖНО: Обновляем UI только если панель отрендерена
+        if (this.isRendered) {
+            // Обновляем поля ввода
+            const nameInput = this.content.querySelector('#room-name')
+            const descInput = this.content.querySelector('#room-description')
+            const gridToggle = this.content.querySelector('#grid-enabled')
+            const snapToggle = this.content.querySelector('#snap-enabled')
+
+            if (nameInput) nameInput.value = defaultSettings.name
+            if (descInput) descInput.value = defaultSettings.description
+            if (gridToggle) gridToggle.checked = defaultSettings.gridEnabled
+            if (snapToggle) snapToggle.checked = defaultSettings.snapEnabled
+
+            this.updateMetaSection()
+            this.showMessage('info', 'Настройки сброшены к значениям по умолчанию')
+        }
     }
 
-    /**
-     * Сбрасывает форму
-     */
-    resetForm() {
-        this.renderContent()
-        this.showMessage('info', 'Изменения сброшены')
+    cleanup() {
+        console.log('🧹 Очистка панели настроек...')
+
+        // Отписываемся от подписок
+        if (this.unsubscribeRoomSettings) {
+            this.unsubscribeRoomSettings()
+            this.unsubscribeRoomSettings = null
+        }
+
+        // Вызываем родительскую очистку
+        super.cleanup()
     }
 
-    /**
-     * Обновляет секцию с мета-информацией
-     */
-    updateMetaSection() {
+    update() {
+        // ВАЖНО: Защита - не обновляем если панель не отрендерена
+        if (!this.isRendered) return
+
+        console.log('🔄 Обновление панели настроек')
         const state = getState()
-        this.currentSettings = state.roomSettings || {}
+        this.currentSettings = state.roomSettings || this.currentSettings
 
-        const metaSection = this.content.querySelector('.settings-meta')
-        if (metaSection) {
-            const newMetaSection = this.createMetaSection()
-            metaSection.parentNode.replaceChild(newMetaSection, metaSection)
+        if (this.content && this.currentSettings) {
+            this.updateMetaSection()
         }
-    }
-
-    /**
-     * Настраивает подписки
-     */
-    setupSubscriptions() {
-        // Подписываемся на изменения настроек
-        this.unsubscribeSettings = subscribe((state) => {
-            if (state.roomSettings !== this.currentSettings) {
-                this.currentSettings = state.roomSettings || {}
-                this.updateMetaSection()
-            }
-        })
-
-        this.cleanupFunctions.push(() => {
-            if (this.unsubscribeSettings) {
-                this.unsubscribeSettings()
-            }
-        })
-    }
-
-    /**
-     * Применяет стили для панели настроек
-     */
-    applySettingsStyles() {
-        if (document.getElementById('settings-panel-styles')) return
-
-        const styleEl = document.createElement('style')
-        styleEl.id = 'settings-panel-styles'
-        styleEl.textContent = `
-            .settings-form {
-                display: flex;
-                flex-direction: column;
-                gap: 20px;
-            }
-            
-            .visibility-group {
-                display: flex;
-                flex-direction: column;
-                gap: 8px;
-            }
-            
-            .visibility-radio {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                padding: 12px;
-                background: #2a2a2a;
-                border: 1px solid #333;
-                border-radius: 6px;
-                cursor: pointer;
-                transition: all 0.2s ease;
-            }
-            
-            .visibility-radio:hover {
-                background: #333;
-                border-color: #444;
-            }
-            
-            .visibility-icon {
-                font-size: 18px;
-                width: 24px;
-                text-align: center;
-            }
-            
-            .visibility-text {
-                flex: 1;
-                display: flex;
-                flex-direction: column;
-            }
-            
-            .visibility-text strong {
-                font-size: 14px;
-                color: #fff;
-            }
-            
-            .visibility-text small {
-                font-size: 12px;
-                color: #888;
-            }
-            
-            .range-container {
-                display: flex;
-                align-items: center;
-                gap: 16px;
-            }
-            
-            .range-container input[type="range"] {
-                flex: 1;
-                height: 4px;
-                background: #333;
-                border-radius: 2px;
-                outline: none;
-            }
-            
-            .range-value {
-                min-width: 40px;
-                text-align: center;
-                font-size: 14px;
-                font-weight: 600;
-                color: #4a9eff;
-            }
-            
-            .settings-actions {
-                display: flex;
-                gap: 12px;
-                margin: 8px 0;
-            }
-            
-            .settings-meta {
-                margin-top: 20px;
-                padding-top: 16px;
-                border-top: 1px solid #222;
-            }
-            
-            .settings-meta-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-                gap: 12px;
-            }
-            
-            .settings-meta-item {
-                display: flex;
-                flex-direction: column;
-                gap: 4px;
-            }
-            
-            .settings-meta-label {
-                font-size: 12px;
-                color: #888;
-            }
-            
-            .settings-meta-value {
-                font-size: 14px;
-                font-weight: 500;
-                color: #fff;
-                font-family: 'JetBrains Mono', monospace;
-            }
-            
-            @media (max-width: 768px) {
-                .settings-actions {
-                    flex-direction: column;
-                }
-                
-                .settings-meta-grid {
-                    grid-template-columns: 1fr;
-                }
-            }
-        `
-        document.head.appendChild(styleEl)
     }
 }
 
-// Создаем и регистрируем панель
-const settingsPanel = new SettingsPanel()
-PanelFactory.register(settingsPanel)
+// Стили для панели настроек
+if (!document.getElementById('settings-panel-styles')) {
+    const styleEl = document.createElement('style')
+    styleEl.id = 'settings-panel-styles'
+    styleEl.textContent = `
+        .panel-section-meta {
+            background: #151515 !important;
+            border: 1px solid #2a2a2a !important;
+        }
 
-// Экспортируем для использования в других модулях
-export { settingsPanel }
+        .panel-meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .meta-grid-item {
+            padding: 10px;
+            background: #1a1a1a;
+            border: 1px solid #222;
+            border-radius: 6px;
+        }
+
+        .meta-grid-label {
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .meta-grid-value {
+            font-size: 14px;
+            color: #fff;
+            font-family: 'JetBrains Mono', monospace;
+            word-break: break-all;
+        }
+
+        .status-protected {
+            color: #ffc107;
+            background: rgba(255, 193, 7, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .status-open {
+            color: #20c997;
+            background: rgba(32, 201, 151, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .role-owner { color: #ff6b35; }
+        .role-admin { color: #e0b400; }
+        .role-editor { color: #4a9eff; }
+        .role-viewer { color: #888; }
+
+        .panel-empty-subtext {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        @media (max-width: 768px) {
+            .panel-meta-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    `
+    document.head.appendChild(styleEl)
+}
+
+// Регистрация панели
+export const settingsPanel = new SettingsPanel({})
+window.__canvasverse_panelModules.set('settings', {
+    title: 'Настройки комнаты',
+    requiredRoles: ['admin', 'owner'],
+    icon: '⚙️',
+    render: (container) => {
+        return settingsPanel.render(container)
+    }
+})

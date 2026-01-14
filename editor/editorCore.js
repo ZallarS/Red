@@ -89,7 +89,8 @@ export function initEditor(snapshot) {
         userId: userId,
         role: role,
         users: [],
-        roomSettings: settings || null
+        roomSettings: settings || null,
+        roomId: roomId // ВАЖНО: Добавляем roomId в состояние
     })
 
     console.log(`👤 Пользователь ${userId?.substring(0, 8)} вошёл с ролью ${role}`)
@@ -148,14 +149,19 @@ export function initEditor(snapshot) {
                 break;
 
             case WS_PROTOCOL.ACTION:
-                console.log('🎯 Получено действие:', msg.action.type)
+                console.log('🎯 Получено действие от', msg.senderId || 'unknown', ':',
+                    msg.action.actions?.map(a => `(${a.x}, ${a.y})`) || `(${msg.action.x}, ${msg.action.y})`)
                 applyAction(msg.action)
                 break
 
             case WS_PROTOCOL.CURSOR:
+                // ВАЖНО: Нормализуем координаты курсора для правильного отображения
+                const normalizedX = msg.x || 0
+                const normalizedY = msg.y || 0
+
                 cursors.set(msg.id, {
-                    x: msg.x,
-                    y: msg.y,
+                    x: normalizedX,
+                    y: normalizedY,
                     color: msg.color,
                     name: msg.name,
                     t: msg.t || Date.now()
@@ -242,6 +248,7 @@ export function initEditor(snapshot) {
                 userId: null,
                 role: 'viewer',
                 roomSettings: null,
+                roomId: null, // ВАЖНО: Сбрасываем roomId
                 panels: {
                     left: { open: true, active: 'tools' },
                     right: { open: true, active: 'users' }

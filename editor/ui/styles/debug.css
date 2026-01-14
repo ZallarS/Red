@@ -1,0 +1,204 @@
+/* debug.css - Стили дебаг-панели */
+
+.debug-overlay {
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.9);
+    color: #0f0;
+    font: 11px "JetBrains Mono", "Cascadia Code", monospace;
+    pointer-events: none;
+    z-index: 9999;
+    white-space: pre;
+    border: 1px solid #0f0;
+    border-radius: 6px;
+    max-width: 350px;
+    max-height: 400px;
+    overflow: hidden;
+    backdrop-filter: blur(2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.debug-overlay .stats {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #333;
+    color: #0af;
+    font-size: 10px;
+}
+
+.debug-overlay.compact {
+    max-width: 280px;
+    font-size: 10px;
+}
+
+.debug-overlay.expanded {
+    max-width: 500px;
+    max-height: 600px;
+}
+
+.debug-overlay .section {
+    margin: 8px 0;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.debug-overlay .section-title {
+    color: #0af;
+    font-weight: bold;
+    margin-bottom: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 2px;
+}
+
+.debug-overlay .metric {
+    display: flex;
+    justify-content: space-between;
+    margin: 2px 0;
+}
+
+.debug-overlay .metric-name {
+    color: #8f8;
+}
+
+.debug-overlay .metric-value {
+    color: #fff;
+    font-weight: bold;
+}
+
+.debug-overlay .metric-good {
+    color: #0f0;
+}
+
+.debug-overlay .metric-warning {
+    color: #ff0;
+}
+
+.debug-overlay .metric-critical {
+    color: #f00;
+}
+
+.debug-overlay .graph {
+    height: 40px;
+    margin: 8px 0;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.debug-overlay .graph-line {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.debug-overlay .graph-bar {
+    position: absolute;
+    bottom: 0;
+    width: 2px;
+    background: #0f0;
+    transition: height 0.3s ease;
+}
+
+.debug-overlay .log {
+    max-height: 200px;
+    overflow-y: auto;
+    margin-top: 8px;
+    font-size: 9px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    padding: 4px;
+}
+
+.debug-overlay .log-entry {
+    padding: 2px 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.debug-overlay .log-entry:last-child {
+    border-bottom: none;
+}
+
+.debug-overlay .log-info {
+    color: #0af;
+}
+
+.debug-overlay .log-warning {
+    color: #ff0;
+}
+
+.debug-overlay .log-error {
+    color: #f00;
+}
+
+.debug-overlay .log-debug {
+    color: #8f8;
+}
+
+.debug-toggle {
+    position: fixed;
+    top: 8px;
+    right: 8px;
+    z-index: 10000;
+    background: rgba(0, 0, 0, 0.9);
+    color: #0f0;
+    border: 1px solid #0f0;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    cursor: pointer;
+    user-select: none;
+    backdrop-filter: blur(2px);
+}
+
+.debug-toggle:hover {
+    background: rgba(0, 255, 0, 0.1);
+}
+
+.debug-toggle.active {
+    background: rgba(0, 255, 0, 0.2);
+}
+
+@media (max-width: 768px) {
+    .debug-overlay {
+        max-width: calc(100vw - 20px);
+        font-size: 9px;
+    }
+
+    .debug-overlay .log {
+        max-height: 150px;
+        font-size: 8px;
+    }
+
+    .debug-toggle {
+        top: 5px;
+        right: 5px;
+        padding: 3px 6px;
+        font-size: 9px;
+    }
+}
+
+@media (max-width: 480px) {
+    .debug-overlay {
+        top: 5px;
+        left: 5px;
+        right: 5px;
+        width: calc(100vw - 10px);
+        max-width: none;
+    }
+
+    .debug-toggle {
+        top: 5px;
+        right: 5px;
+        padding: 2px 4px;
+        font-size: 8px;
+    }
+}

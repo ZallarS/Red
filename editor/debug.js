@@ -36,35 +36,22 @@ export function createDebugOverlay(getData) {
     }
 
     function init() {
+        // Загружаем стили дебага
+        if (!document.getElementById('debug-styles')) {
+            const debugLink = document.createElement('link')
+            debugLink.id = 'debug-styles'
+            debugLink.rel = 'stylesheet'
+            debugLink.href = '/editor/ui/styles/debug.css'
+            document.head.appendChild(debugLink)
+        }
+
         el = document.createElement('div')
-        Object.assign(el.style, {
-            position: 'fixed',
-            top: '8px',
-            left: '8px',
-            padding: '10px',
-            background: 'rgba(0,0,0,0.9)',
-            color: '#0f0',
-            font: '11px "JetBrains Mono", "Cascadia Code", monospace',
-            pointerEvents: 'none',
-            zIndex: 9999,
-            whiteSpace: 'pre',
-            display: enabled ? 'block' : 'none',
-            border: '1px solid #0f0',
-            borderRadius: '6px',
-            maxWidth: '350px',
-            maxHeight: '400px',
-            overflow: 'hidden',
-            backdropFilter: 'blur(2px)',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)'
-        })
+        el.className = 'debug-overlay'
+        el.style.display = enabled ? 'block' : 'none'
 
         // Статистика производительности
         statsEl = document.createElement('div')
-        statsEl.style.marginTop = '10px'
-        statsEl.style.paddingTop = '10px'
-        statsEl.style.borderTop = '1px solid #333'
-        statsEl.style.color = '#0af'
-        statsEl.style.fontSize = '10px'
+        statsEl.className = 'stats'
 
         document.body.appendChild(el)
         el.appendChild(statsEl)

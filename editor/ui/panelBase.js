@@ -1,4 +1,3 @@
-// editor/ui/panelBase.js
 import { getState, subscribe } from './store.js'
 import { ROLE_META } from '../config.js'
 
@@ -103,344 +102,14 @@ export class PanelBase {
      * Применяет стили к панели
      */
     applyStyles() {
-        // Проверяем, не добавлены ли уже стили
+        // Проверяем, не добавлены ли уже стили панелей
         if (document.getElementById('panel-base-styles')) return
 
-        const styleEl = document.createElement('style')
-        styleEl.id = 'panel-base-styles'
-        styleEl.textContent = this.getBaseStyles()
-        document.head.appendChild(styleEl)
-    }
-
-    /**
-     * Возвращает базовые стили для всех панелей
-     */
-    getBaseStyles() {
-        return `
-            /* Базовые стили панелей */
-            .panel {
-                width: 100%;
-                height: 100%;
-                display: flex;
-                flex-direction: column;
-                background: #0f0f0f;
-                border-left: 1px solid #222;
-                font-family: 'Inter', sans-serif;
-                overflow: hidden;
-            }
-            
-            .panel-header {
-                padding: 16px 20px;
-                background: #1a1a1a;
-                border-bottom: 1px solid #222;
-                flex-shrink: 0;
-            }
-            
-            .panel-header-content {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                margin-bottom: 8px;
-            }
-            
-            .panel-icon {
-                font-size: 20px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                width: 32px;
-                height: 32px;
-                background: rgba(74, 158, 255, 0.1);
-                border-radius: 8px;
-                color: #4a9eff;
-            }
-            
-            .panel-title {
-                font-size: 18px;
-                font-weight: 600;
-                color: #fff;
-                margin: 0;
-                flex: 1;
-            }
-            
-            .panel-description {
-                font-size: 13px;
-                color: #888;
-                margin-left: 44px;
-                line-height: 1.4;
-            }
-            
-            .panel-header-meta {
-                display: flex;
-                justify-content: space-between;
-                font-size: 11px;
-                color: #666;
-            }
-            
-            .panel-version {
-                font-family: 'JetBrains Mono', monospace;
-            }
-            
-            .panel-category {
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            }
-            
-            .panel-content {
-                flex: 1;
-                overflow-y: auto;
-                padding: 16px;
-                position: relative;
-            }
-            
-            .panel-empty {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                padding: 40px 20px;
-                color: #666;
-                text-align: center;
-            }
-            
-            .panel-empty-icon {
-                font-size: 48px;
-                margin-bottom: 16px;
-                opacity: 0.5;
-            }
-            
-            .panel-empty-text {
-                font-size: 14px;
-            }
-            
-            /* Стили для полей ввода */
-            .panel-field {
-                margin-bottom: 16px;
-            }
-            
-            .panel-field-label {
-                display: block;
-                font-size: 14px;
-                font-weight: 500;
-                color: #ddd;
-                margin-bottom: 8px;
-            }
-            
-            .panel-field-input {
-                width: 100%;
-                padding: 10px 12px;
-                background: #2a2a2a;
-                border: 1px solid #333;
-                border-radius: 6px;
-                color: #fff;
-                font-family: 'Inter', sans-serif;
-                font-size: 14px;
-                transition: all 0.2s ease;
-            }
-            
-            .panel-field-input:focus {
-                border-color: #4a9eff;
-                outline: none;
-                background: #2c2c2c;
-            }
-            
-            .panel-field-hint {
-                font-size: 12px;
-                color: #888;
-                margin-top: 4px;
-            }
-            
-            /* Стили для кнопок */
-            .panel-btn {
-                padding: 10px 16px;
-                border-radius: 6px;
-                border: 1px solid #333;
-                background: #2a2a2a;
-                color: #fff;
-                font-family: 'Inter', sans-serif;
-                font-size: 14px;
-                font-weight: 500;
-                cursor: pointer;
-                transition: all 0.2s ease;
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                gap: 8px;
-            }
-            
-            .panel-btn:hover {
-                background: #333;
-                border-color: #444;
-            }
-            
-            .panel-btn-primary {
-                background: #4a9eff;
-                border-color: #4a9eff;
-            }
-            
-            .panel-btn-primary:hover {
-                background: #3a8aef;
-                border-color: #3a8aef;
-            }
-            
-            .panel-btn-icon {
-                font-size: 16px;
-            }
-            
-            /* Стили для групп кнопок */
-            .panel-btn-group {
-                display: flex;
-                gap: 8px;
-                margin: 16px 0;
-            }
-            
-            .panel-btn-group .panel-btn {
-                flex: 1;
-            }
-            
-            /* Стили для секций */
-            .panel-section {
-                margin-bottom: 24px;
-                padding: 16px;
-                background: #1a1a1a;
-                border: 1px solid #222;
-                border-radius: 8px;
-            }
-            
-            .panel-section-title {
-                font-size: 16px;
-                font-weight: 600;
-                color: #fff;
-                margin-bottom: 12px;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }
-            
-            .panel-section-title-icon {
-                font-size: 18px;
-            }
-            
-            /* Стили для списков */
-            .panel-list {
-                display: flex;
-                flex-direction: column;
-                gap: 8px;
-            }
-            
-            .panel-list-item {
-                padding: 12px;
-                background: #2a2a2a;
-                border: 1px solid #333;
-                border-radius: 6px;
-                transition: all 0.2s ease;
-            }
-            
-            .panel-list-item:hover {
-                background: #333;
-                border-color: #444;
-            }
-            
-            /* Стили для переключателей */
-            .panel-toggle {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                padding: 12px 0;
-                cursor: pointer;
-            }
-            
-            .panel-toggle-text {
-                font-size: 14px;
-                color: #ddd;
-                flex: 1;
-                padding-right: 16px;
-            }
-            
-            .panel-toggle-slider {
-                position: relative;
-                width: 52px;
-                height: 28px;
-                background: #333;
-                border-radius: 14px;
-                transition: all 0.3s ease;
-                flex-shrink: 0;
-            }
-            
-            .panel-toggle-slider:before {
-                content: '';
-                position: absolute;
-                width: 24px;
-                height: 24px;
-                background: #888;
-                border-radius: 50%;
-                top: 2px;
-                left: 2px;
-                transition: all 0.3s ease;
-            }
-            
-            .panel-toggle input:checked + .panel-toggle-slider {
-                background: #4a9eff;
-            }
-            
-            .panel-toggle input:checked + .panel-toggle-slider:before {
-                transform: translateX(24px);
-                background: #fff;
-            }
-            
-            /* Стили для таблиц */
-            .panel-table {
-                width: 100%;
-                border-collapse: collapse;
-            }
-            
-            .panel-table th {
-                text-align: left;
-                padding: 8px 12px;
-                background: #2a2a2a;
-                color: #ddd;
-                font-weight: 600;
-                font-size: 12px;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                border-bottom: 1px solid #333;
-            }
-            
-            .panel-table td {
-                padding: 8px 12px;
-                border-bottom: 1px solid #222;
-                font-size: 13px;
-                color: #ccc;
-            }
-            
-            .panel-table tr:hover td {
-                background: rgba(255, 255, 255, 0.05);
-            }
-            
-            /* Адаптивность */
-            @media (max-width: 768px) {
-                .panel-header {
-                    padding: 12px 16px;
-                }
-                
-                .panel-title {
-                    font-size: 16px;
-                }
-                
-                .panel-content {
-                    padding: 12px;
-                }
-                
-                .panel-btn {
-                    padding: 8px 12px;
-                    font-size: 13px;
-                }
-                
-                .panel-section {
-                    padding: 12px;
-                }
-            }
-        `
+        const linkEl = document.createElement('link')
+        linkEl.id = 'panel-base-styles'
+        linkEl.rel = 'stylesheet'
+        linkEl.href = '/editor/ui/styles/panels.css'
+        document.head.appendChild(linkEl)
     }
 
     /**
@@ -664,8 +333,19 @@ export class PanelBase {
      * Обновляет панель
      */
     update() {
-        if (!this.isRendered) return
+        if (!this.isRendered) {
+            console.warn(`⚠️ Панель ${this.id} не отрендерена, пропускаем обновление`)
+            return
+        }
+
         console.log(`🔄 Обновление панели: ${this.title}`)
+
+        // Защита от вызова после очистки
+        if (!this.content) {
+            console.warn(`⚠️ Контент панели ${this.id} не найден`)
+            return
+        }
+
         this.renderContent()
     }
 
@@ -673,7 +353,10 @@ export class PanelBase {
      * Показывает сообщение в панели
      */
     showMessage(type, text) {
-        if (!this.content) return
+        if (!this.content || !this.isRendered) {
+            console.warn(`⚠️ Панель ${this.id} не отрендерена, сообщение не показано:`, text)
+            return
+        }
 
         const message = document.createElement('div')
         message.className = `panel-message panel-message-${type}`
@@ -681,13 +364,17 @@ export class PanelBase {
 
         // Удаляем предыдущие сообщения
         const existingMessages = this.content.querySelectorAll('.panel-message')
-        existingMessages.forEach(msg => msg.remove())
+        existingMessages.forEach(msg => {
+            if (msg.parentNode === this.content) {
+                msg.remove()
+            }
+        })
 
         this.content.insertBefore(message, this.content.firstChild)
 
         // Автоматически удаляем через 3 секунды
         setTimeout(() => {
-            if (message.parentNode) {
+            if (message.parentNode === this.content) {
                 message.remove()
             }
         }, 3000)
