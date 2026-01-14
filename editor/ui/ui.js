@@ -1,6 +1,4 @@
 import { subscribe, getState, setState } from './store.js'
-import { panelManager } from './panelManager.js'
-import { PanelFactory } from './panelBase.js'
 
 // Импорт конкретных панелей
 import './modules/toolsPanel.js'

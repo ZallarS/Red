@@ -3,7 +3,7 @@ import { TILE_SIZE } from './map.js'
 import { createSetTileAction, applyAction } from './actions.js'
 import { push } from './history.js'
 import { getNetworkManager, WS_PROTOCOL } from './network.js'
-import { ACTION } from './protocol.js'
+import { ACTION } from './config.js'
 
 /**
  * ===== TOOL IMPLEMENTATIONS =====

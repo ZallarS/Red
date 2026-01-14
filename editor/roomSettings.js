@@ -1,5 +1,5 @@
 import { getState, setState } from './ui/store.js'
-import { send, getStatus } from './ws.js'
+import { getNetworkManager } from './network.js' // Изменён импорт
 
 // Константы настроек комнаты
 export const ROOM_SETTINGS = {
@@ -46,7 +46,8 @@ export function initRoomSettings() {
 
 // Сохранение настроек на сервер
 export function saveRoomSettings(settings) {
-    if (getStatus() !== 'online') {
+    const networkManager = getNetworkManager() // Используем сетевой менеджер
+    if (networkManager.getStatus() !== 'online') {
         console.error('❌ Нет соединения для сохранения настроек')
         return false
     }
@@ -59,7 +60,7 @@ export function saveRoomSettings(settings) {
 
     console.log('💾 Сохранение настроек комнаты:', settings)
 
-    send({
+    networkManager.send({
         type: 'room-settings-update',
         roomId: currentRoomId,
         settings: settings

@@ -1,7 +1,6 @@
 import { getTile, setTile } from './map.js'
 import { getNetworkManager, WS_PROTOCOL } from './network.js'
-import { ACTION } from './protocol.js'
-import { MESSAGES } from './config.js'
+import { ACTION,MESSAGES } from './config.js'
 
 /* ============================================================
    ===============  MAP / DRAW ACTIONS (OLD) ==================
