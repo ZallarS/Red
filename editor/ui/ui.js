@@ -36,14 +36,10 @@ function applyGlobalStyles() {
 }
 
 function applyRoleToUI(role) {
-    const body = document.body
-    body.classList.remove('role-admin', 'role-editor', 'role-viewer')
-
-    if (role === 'admin') body.classList.add('role-admin')
-    else if (role === 'editor') body.classList.add('role-editor')
-    else if (role === 'viewer') body.classList.add('role-viewer')
-
-    console.log(`🎭 Роль UI обновлена: ${role}`)
+    // ВАЖНО: УБИРАЕМ добавление классов ролей к body
+    // чтобы избежать влияния CSS на цвет карты
+    console.log(`🎭 Роль пользователя: ${role}`)
+    // Классы больше не добавляются
 }
 
 // ===== PANEL MANAGEMENT =====
@@ -384,7 +380,7 @@ export function initUI() {
     createPanel('left')
     createPanel('right')
 
-    // Применяем роль
+    // Применяем роль (без добавления классов)
     const initialState = getState()
     applyRoleToUI(initialState.role)
 
@@ -443,7 +439,7 @@ export function cleanupUI() {
         }
     })
 
-    // Удаляем классы ролей
+    // Удаляем классы ролей (если они были добавлены ранее)
     document.body.classList.remove('role-admin', 'role-editor', 'role-viewer')
 
     uiInitialized = false

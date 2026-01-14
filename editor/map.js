@@ -137,6 +137,10 @@ export function redrawChunkLOD(chunk, lod) {
     const baseX = chunk.cx * CHUNK_SIZE
     const baseY = chunk.cy * CHUNK_SIZE
 
+    // ВАЖНО: Цвет тайлов всегда одинаковый для всех ролей
+    // Это гарантирует, что карта будет выглядеть одинаково для всех пользователей
+    const TILE_COLOR = '#444' // Тёмно-серый цвет для тайлов
+
     for (let y = 0; y < CHUNK_SIZE; y++) {
         for (let x = 0; x < CHUNK_SIZE; x++) {
             const tile = getTile(baseX + x, baseY + y)
@@ -146,17 +150,17 @@ export function redrawChunkLOD(chunk, lod) {
             const py = y * TILE_SIZE
 
             if (lod === LOD_LEVELS.FULL) {
-                ctx.fillStyle = '#444'
+                ctx.fillStyle = TILE_COLOR
                 ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE)
             }
 
             else if (lod === LOD_LEVELS.SIMPLE) {
-                ctx.fillStyle = 'rgba(68,68,68,0.6)'
+                ctx.fillStyle = 'rgba(68,68,68,0.6)' // TILE_COLOR с прозрачностью 0.6
                 ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE)
             }
 
             else if (lod === LOD_LEVELS.DOT) {
-                ctx.fillStyle = 'rgba(68,68,68,0.25)'
+                ctx.fillStyle = 'rgba(68,68,68,0.25)' // TILE_COLOR с прозрачностью 0.25
                 ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE)
             }
         }
